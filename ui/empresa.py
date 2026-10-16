@@ -245,7 +245,9 @@ def _header(ca: pipeline.CompanyAnalysis):
 
 
 def _save_bar(T, work, ca):
-    c1, c2, c4, c3 = st.columns([1, 1, 1, 3])
+    c1, c2, c4, c5, c3 = st.columns([1, 1, 1, 1.1, 1.9])
+    from ui.prioridad import selector_lista
+    selector_lista(T, c5)
     if c4.button("↺ Volver a lo guardado", width="stretch", help="Descarta los cambios sin guardar de esta empresa."):
         _reset_widgets(T)
         st.session_state.pop(f"saved_{T}", None)

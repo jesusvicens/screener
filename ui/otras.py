@@ -179,6 +179,14 @@ def screener_page():
     show_cols_table(out, height=700, kinds={k: v for k, v in kinds.items() if k in out.columns}, column_config=ccfg)
     if len(res) > 1000:
         st.caption("Muestro las 1.000 primeras; afina los filtros o descarga el CSV completo.")
+    lb = st.columns([3, 1.4, 1])
+    lpick = lb[0].multiselect("Añadir a una lista", list(out.index), placeholder="Añadir empresas del resultado a una de tus listas…",
+                              label_visibility="collapsed")
+    from ui.prioridad import _guardar, _listas
+    from terminal import listas as L
+    lg = lb[1].selectbox("Lista", _listas()["grupos"], key="scr_lista", label_visibility="collapsed")
+    if lb[2].button("Añadir a la lista", width="stretch", disabled=not lpick):
+        _guardar(L.add(_listas(), lpick, lg), f"{len(lpick)} añadidas a «{lg}»")
     b = st.columns([2, 1, 1])
     pick = b[0].selectbox("Abrir ficha", list(out.index), index=None, placeholder="Elige una empresa del resultado…")
     if pick:

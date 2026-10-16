@@ -17,6 +17,7 @@ Terminal personal para analizar cotizadas de EE. UU. con tu propio modelo (el Ex
 | **Lote** | Pasa el modelo completo por una lista de tickers (o por el resultado del screener) y ordena por margen de seguridad. |
 | **Cartera** | Tus movimientos (compras, ventas, dividendos, splits) a mano o importados del extracto CSV de Interactive Brokers; posiciones con valor actual en divisa y en euros, plusvalía latente y enlace a tu valoración; pestaña IRPF con las transmisiones por FIFO en euros (tipo de cambio del BCE de cada fecha), aviso de la regla de los dos meses, dividendos con retención en origen y Excel para la declaración. |
 | **Mis análisis** | Las empresas que has guardado, con su nota y su valoración del día en que guardaste. |
+| **Prioridad** | Qué analizar primero: empresas con mejor nota financiera que aún no has mirado, ordenadas por prioridad (70 % nota + 30 % precio relativo por rentabilidad FCF). Y tus listas de seguimiento (A analizar, Analizadas, Para más adelante, Caras, Descartadas y las tuyas) con comentario, precio objetivo y aviso cuando llega a ese precio. Se añaden empresas desde aquí, desde la ficha o desde el screener. |
 
 ### Cómo funciona el examen
 - Bloques cualitativos (Operativo, Producto, Dirección, Estrategia, Valores, Sector): los contestas tú. En la pestaña hay un texto listo para pegar en tu chat de Claude y trabajarlos ahí.
