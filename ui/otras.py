@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import time
+from datetime import date
 
 import pandas as pd
 import streamlit as st
@@ -235,3 +237,161 @@ def mis_analisis_page():
     pick = st.selectbox("Abrir ficha", list(df["Ticker"]), index=None, placeholder="Elige una empresa…")
     if pick:
         _go_company(pick)
+
+
+# ------------------------------------------------------------------ Cartera
+def _load_cartera() -> list[dict]:
+    if "cartera_rows" not in st.session_state:
+        try:
+            st.session_state["cartera_rows"] = (storage.load("_CARTERA") or {}).get("movimientos", [])
+        except Exception as e:  # noqa: BLE001
+            st.error(f"No he podido leer la cartera guardada: {e}")
+            st.session_state["cartera_rows"] = []
+    return st.session_state["cartera_rows"]
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _held_prices(tickers: tuple) -> dict:
+    from terminal import prices as P
+    out = P.batch_last_prices(list(tickers))
+    missing = [t for t in tickers if t not in out]
+    if missing:
+        mk, _ = screener.load_market()
+        if mk is not None:
+            m = mk.drop_duplicates("Ticker").set_index("Ticker")["Precio"]
+            out.update({t: float(m[t]) for t in missing if t in m.index and pd.notna(m[t])})
+    return out
+
+
+def cartera_page():
+    from terminal import cartera as C
+    st.markdown("<span class='subtle'>CARTERA</span>", unsafe_allow_html=True)
+    st.markdown("# Mi cartera")
+    rows = _load_cartera()
+    st.caption(f"Almacenamiento: {storage.backend()}"
+               + ("" if storage.backend() == "github" else " · ⚠ sin token de GitHub, lo que guardes aquí se pierde cuando la app se reinicia."))
+    tabs = st.tabs(["Posiciones", "Movimientos", "IRPF"])
+
+    try:
+        res = C.process(rows)
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Error al procesar los movimientos: {e}")
+        return
+    for w in res["avisos"]:
+        st.warning(w)
+
+    with tabs[0]:
+        pos = res["posiciones"]
+        if pos.empty:
+            st.info("Aún no hay posiciones. Añade tus compras en «Movimientos» o importa el extracto de Interactive Brokers.")
+        else:
+            px = _held_prices(tuple(sorted(pos["Ticker"])))
+            val = C.value_positions(pos, px)
+            # Enlaza con tus análisis guardados
+            saved = {it.get("ticker"): it.get("resumen") or {} for it in storage.list_all()}
+            val["Valor estimado"] = val["Ticker"].map(lambda t: saved.get(t, {}).get("Valor estimado"))
+            val["Margen de seguridad"] = val["Ticker"].map(lambda t: saved.get(t, {}).get("Margen de seguridad"))
+            tot_v, tot_c = val["Valor (€)"].sum(), val["Coste total (€)"].sum()
+            m = st.columns(4)
+            m[0].metric("Valor de la cartera", f"{tot_v:,.0f} €")
+            m[1].metric("Coste", f"{tot_c:,.0f} €")
+            m[2].metric("Plusvalía latente", f"{tot_v - tot_c:,.0f} €", f"{(tot_v / tot_c - 1):.1%}" if tot_c else None)
+            ys = C.tax_year(res, date.today().year)["resumen"]
+            m[3].metric(f"Plusvalías realizadas {date.today().year}", f"{ys['Saldo neto (€)']:,.0f} €")
+            cols = ["Ticker", "Acciones", "Coste medio", "Precio actual", "Divisa", "Valor (€)", "Coste total (€)", "Plusvalía latente (€)",
+                    "Rentabilidad", "Rentabilidad en €", "Peso", "Valor estimado", "Margen de seguridad", "Primera compra"]
+            show_cols_table(val[cols].set_index("Ticker"), height=38 + 35 * len(val),
+                            kinds={"Coste medio": "ps", "Precio actual": "ps", "Valor estimado": "ps", "Peso": "pct",
+                                   "Rentabilidad": "pct", "Rentabilidad en €": "pct", "Acciones": "ps"})
+            st.caption("«Rentabilidad en €» incluye el efecto del tipo de cambio. «Valor estimado» y «Margen de seguridad» salen de tus análisis "
+                       "guardados (foto del día en que guardaste). Precios: último cierre.")
+            pick = st.selectbox("Abrir ficha", list(val["Ticker"]), index=None, placeholder="Elige una posición…")
+            if pick:
+                _go_company(pick)
+
+    with tabs[1]:
+        st.caption("Una fila por operación. Tipo: Compra, Venta, Dividendo (pon el bruto en «Importe» y la retención en «Retención») "
+                   "o Split (pon el factor en «Acciones», p. ej. 4 para un 4×1). Precio en la divisa de cotización; la conversión a euros "
+                   "se hace sola con el tipo del BCE de cada fecha.")
+        df = C.normalize(rows) if rows else pd.DataFrame(columns=C.COLUMNS)
+        edited = st.data_editor(
+            df, num_rows="dynamic", width="stretch", key="cartera_editor", height=420,
+            column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY", required=True),
+                           "Tipo": st.column_config.SelectboxColumn(options=C.TIPOS, required=True),
+                           "Ticker": st.column_config.TextColumn(required=True),
+                           "Acciones": st.column_config.NumberColumn(format="%.4f"), "Precio": st.column_config.NumberColumn(format="%.4f"),
+                           "Importe": st.column_config.NumberColumn(format="%.2f", help="Solo dividendos: importe bruto"),
+                           "Comisión": st.column_config.NumberColumn(format="%.2f"), "Retención": st.column_config.NumberColumn(format="%.2f"),
+                           "Divisa": st.column_config.SelectboxColumn(options=["USD", "EUR", "GBP", "CHF", "CAD", "DKK", "SEK", "NOK", "JPY", "HKD"])})
+        c = st.columns([1, 1, 2])
+        if c[0].button("💾 Guardar movimientos", type="primary", width="stretch"):
+            recs = C.to_records(C.normalize(edited.to_dict("records")))
+            try:
+                msg = storage.save("_CARTERA", {"movimientos": recs})
+                st.session_state["cartera_rows"] = recs
+                st.toast(msg)
+                st.rerun()
+            except Exception as e:  # noqa: BLE001
+                st.error(f"No se ha podido guardar: {e}")
+        c[1].download_button("⬇ CSV", C.normalize(edited.to_dict("records")).to_csv(index=False).encode("utf-8"), "movimientos.csv",
+                             width="stretch")
+        with st.expander("Importar extracto de Interactive Brokers (CSV)"):
+            st.caption("En IBKR: Informes → Extractos → Actividad → periodo → formato CSV. Se leen las secciones Trades, Dividends y Withholding Tax. "
+                       "Las operaciones que ya tengas (misma fecha, ticker, tipo y acciones) no se duplican.")
+            up = st.file_uploader("Extracto CSV", type=["csv"], label_visibility="collapsed")
+            if up is not None:
+                new, notes = C.parse_ibkr(up.getvalue().decode("utf-8-sig", errors="ignore"))
+                for n in notes:
+                    st.warning(n)
+                cur = C.to_records(C.normalize(edited.to_dict("records")))
+                seen = {(r["Fecha"], r["Ticker"], r["Tipo"], round(float(r["Acciones"] or 0), 4)) for r in cur}
+                add = [r for r in new if (r["Fecha"], r["Ticker"], r["Tipo"], round(float(r["Acciones"] or 0), 4)) not in seen]
+                st.write(f"{len(new)} operaciones en el extracto · {len(add)} nuevas.")
+                if add and st.button(f"Añadir {len(add)} operaciones y guardar", type="primary"):
+                    recs = C.to_records(C.normalize(cur + add))
+                    try:
+                        storage.save("_CARTERA", {"movimientos": recs})
+                        st.session_state["cartera_rows"] = recs
+                        st.rerun()
+                    except Exception as e:  # noqa: BLE001
+                        st.error(f"No se ha podido guardar: {e}")
+
+    with tabs[2]:
+        years = sorted({d.year for d in pd.to_datetime(res["movimientos"]["Fecha"])} | {date.today().year}, reverse=True) \
+            if not res["movimientos"].empty else [date.today().year]
+        y = st.selectbox("Ejercicio fiscal", years)
+        tx = C.tax_year(res, y)
+        r = tx["resumen"]
+        m = st.columns(4)
+        m[0].metric("Saldo neto ganancias/pérdidas", f"{r['Saldo neto (€)']:,.2f} €")
+        m[1].metric("Ganancias", f"{r['Ganancias (€)']:,.2f} €")
+        m[2].metric("Pérdidas", f"{r['Pérdidas (€)']:,.2f} €")
+        m[3].metric("Dividendos brutos", f"{r['Dividendos brutos (€)']:,.2f} €", f"retención {r['Retenciones en origen (€)']:,.2f} €")
+        st.markdown("## Transmisiones de acciones (FIFO)")
+        if tx["ventas"].empty:
+            st.info("No hay ventas en este ejercicio.")
+        else:
+            v = tx["ventas"].copy()
+            show_cols_table(v.set_index("Ticker"), height=38 + 35 * len(v),
+                            kinds={"Acciones": "ps", "Precio compra": "ps", "Precio venta": "ps", "Valor adquisición (€)": "ps",
+                                   "Valor transmisión (€)": "ps", "Ganancia / pérdida (€)": "ps", "Ganancia en divisa": "ps"})
+            if r["Ventas con aviso de regla de 2 meses"]:
+                st.warning("Hay ventas con pérdida y recompras de la misma empresa en ±2 meses: esa pérdida no se integra este año "
+                           "(art. 33.5.f LIRPF) hasta que vendas las acciones recompradas. Revísalo antes de declarar.")
+        st.markdown("## Dividendos")
+        if tx["dividendos"].empty:
+            st.info("No hay dividendos en este ejercicio.")
+        else:
+            show_cols_table(tx["dividendos"].set_index("Ticker"), height=38 + 35 * len(tx["dividendos"]),
+                            kinds={c: "ps" for c in tx["dividendos"].columns if c not in ("Fecha", "Divisa")})
+        bio = io.BytesIO()
+        with pd.ExcelWriter(bio, engine="openpyxl") as xw:
+            pd.Series(r).to_frame("Importe").to_excel(xw, sheet_name="Resumen")
+            tx["ventas"].to_excel(xw, sheet_name="Transmisiones", index=False)
+            tx["dividendos"].to_excel(xw, sheet_name="Dividendos", index=False)
+            res["movimientos"].to_excel(xw, sheet_name="Movimientos", index=False)
+        st.download_button(f"⬇ Excel para la declaración {y}", bio.getvalue(), f"IRPF_{y}_cartera.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.caption("FIFO por empresa; valores en euros con el tipo de referencia del BCE de cada fecha; comisiones incluidas en adquisición "
+                   "y restadas en transmisión. Es una ayuda para preparar la declaración, no asesoramiento fiscal: contrástalo con los datos "
+                   "fiscales de tu bróker y con tu asesor.")

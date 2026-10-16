@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import numbers
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -88,6 +89,9 @@ def kind_of(label: str) -> str:
 def fmt_cell(v, kind):
     if isinstance(v, str):
         return v
+    if not isinstance(v, numbers.Number):
+        return "—" if v is None or v is pd.NaT else (v.strftime("%d/%m/%Y") if hasattr(v, "strftime") else str(v))
+    v = float(v)
     if not ok(v):
         return "—"
     if kind == "int":
