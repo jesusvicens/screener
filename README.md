@@ -25,6 +25,12 @@ Terminal personal para analizar cotizadas de EE. UU. con tu propio modelo (el Ex
 ### Escenarios
 Las casillas vacías usan la propuesta por fase de tu Excel (la ves en gris). Escribes encima para fijar tu supuesto y la borras para volver a la propuesta. El escenario **Desastre**, que en el Excel daba `#REF!`, aquí se calcula.
 
+## Excel con tu plantilla
+El botón «⬇ Excel (mi plantilla)» de cada ficha genera tu propio Excel de análisis (`templates/plantilla_analisis.xlsx`, con todas sus fórmulas) relleno con los datos de la empresa, tus supuestos, la parte de riesgo y el examen nuevo (4 bloques financieros con desplegables y el dato que justifica cada propuesta en la columna I). Excel recalcula al abrir.
+
+## Notas financieras de todas las empresas
+`scripts/notas_financieras.py` calcula el examen financiero de todo el universo con el archivo masivo de la SEC (`companyfacts.zip`). Lo ejecuta cada domingo la GitHub Action «Notas financieras» y guarda `data/notas_financieras.csv.gz`; el screener lo lee. Para lanzarlo a mano: GitHub → Actions → «Notas financieras (todas las empresas)» → Run workflow.
+
 ## Ponerla online (gratis, solo para ti)
 
 1. Sube esta carpeta a un repositorio **privado** de GitHub (puede ser tu repo `screener`).
