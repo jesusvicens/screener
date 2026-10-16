@@ -84,6 +84,11 @@ CONCEPTS: list[tuple[str, str, str, list[str], list[str]]] = [
                                                "UnsecuredLongTermDebt"], ["NoncurrentBorrowings", "LongtermBorrowings"]),
     ("other_lt_liabilities", "Otros pasivos a largo plazo", "inst", ["OtherLiabilitiesNoncurrent"], ["OtherNoncurrentLiabilities"]),
     ("total_liabilities", "Total pasivo", "inst", ["Liabilities"], ["Liabilities"]),
+    ("treasury_stock", "Autocartera (acciones propias)", "inst", ["TreasuryStockValue", "TreasuryStockValueAcquiredCostMethod",
+                                                                   "TreasuryStockCommonValue"], ["TreasuryShares"]),
+    ("deferred_rev_current", "Ingresos diferidos a corto", "inst", ["ContractWithCustomerLiabilityCurrent", "DeferredRevenueCurrent"], []),
+    ("interest_expense", "Gasto por intereses", "flow", ["InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt",
+                                                         "InterestAndDebtExpense", "InterestPaidNet"], ["InterestExpense", "FinanceCosts"]),
     ("retained_earnings", "Reservas (beneficios retenidos)", "inst", ["RetainedEarningsAccumulatedDeficit"], ["RetainedEarnings"]),
     ("aoci", "Otro resultado global acumulado", "inst", ["AccumulatedOtherComprehensiveIncomeLossNetOfTax"], []),
     ("equity", "Patrimonio neto", "inst", ["StockholdersEquity",
@@ -385,6 +390,9 @@ def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
             put(k, y, None if v is None else v / M)
         so = g("shares_outstanding", y)
         put("shares_outstanding", y, None if so is None else so / M)
+        for k in ("treasury_stock", "deferred_rev_current", "interest_expense"):
+            v = g(k, y)
+            put(k, y, None if v is None else abs(v) / M)
 
         # --- Cash Flow
         cfni = g("cf_net_income", y) or ni

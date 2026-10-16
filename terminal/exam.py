@@ -56,55 +56,61 @@ QUESTIONS: list[tuple[str, str, str, list[str]]] = [
      ["Tiene ventajas parciales, pero comparables a sus rivales.", "Posee ventajas sostenibles y diferenciales claras frente a la competencia.", "No tiene competencia comparable."]),
     ("q21", "Sector y posicionamiento", "¿Es un sector intensivo en capital? (CAPEX)",
      ["Sí, requiere inversión constante", "Moderado", "No, depende de conocimiento o creatividad"]),
-    ("q22", "PyG", "Calidad del crecimiento de ingresos",
-     ["Crecimiento errático, cíclico o puntual", "Crecimiento relativamente estable, con componentes estructurales y coyunturales",
-      "Crecimiento consistente, orgánico y apoyado en demanda recurrente o clara expansión de mercado."]),
-    ("q23", "PyG", "Defensabilidad del margen bruto", ["Margen presionable", "Margen razonable", "Margen defensable"]),
-    ("q24", "PyG", "Flexibilidad de la estructura de costes", ["Costes rígidos", "Costes mixtos", "Costes flexibles"]),
-    ("q25", "PyG", "Margen de beneficio neto", ["Margen neto < 15%", "Margen neto entre 15% y 30%", "Margen neto > 30%"]),
-    ("q26", "PyG", "Dependencia financiera y fiscal", ["Alta dependencia", "Dependencia moderada", "Baja dependencia"]),
-    ("q27", "PyG", "Consistencia del beneficio neto", ["Beneficio volátil", "Beneficio estable", "Beneficio recurrente"]),
-    ("q28", "Balance", "Evolución del efectivo y equivalentes", ["Disminuye", "Se mantiene", "Aumenta"]),
-    ("q29", "Balance", "Deuda ajustada / Equity", ["Mayor a 0,8", "Entre 0,6 y 0,8", "Menor a 0,6"]),
-    ("q30", "Balance", "Existencias vs crecimiento de ingresos", ["Desalineadas o muy cíclicas", "Ligera acumulación", "Alineadas con el crecimiento"]),
-    ("q31", "Balance", "Clientes / ventas anuales", ["Mayor al 30%", "Entre 15% y 30%", "Menor al 15%"]),
-    ("q32", "Balance", "Inmovilizado (PPE) sobre activo", ["Mayor al 40%", "Entre 20% y 40%", "Menor al 20%"]),
-    ("q33", "Balance", "Liquidez operativa vs pasivo corriente", ["OCF insuficiente", "Cobertura parcial", "Cobertura holgada"]),
-    ("q34", "Balance", "Repago deuda corto plazo con OCF", ["Más de 2 años", "Entre 1 y 2 años", "Menos de 1 año"]),
-    ("q35", "Balance", "Repago deuda largo plazo con OCF", ["Más de 5 años", "Entre 3 y 5 años", "Menos de 3 años"]),
-    ("q36", "Balance", "Tendencia del coeficiente de solvencia (5 años)", ["Empeora", "Se mantiene", "Mejora"]),
-    ("q37", "Balance", "Política de capital (acciones propias)", ["Emite acciones", "Ni emite ni recompra", "Recompra acciones"]),
-    ("q38", "Balance", "ROE", ["Menor al 15%", "Entre 15% y 25%", "Mayor al 25%"]),
-    ("q39", "Cash Flow", "Flujo operativo vs beneficio neto", ["Menor que el beneficio neto", "Similar al beneficio neto", "Mayor que el beneficio neto"]),
-    ("q40", "Cash Flow", "CAGR del flujo operativo vs CAGR del beneficio neto", ["Menor", "Similar", "Mayor"]),
-    ("q41", "Cash Flow", "Capex sobre flujo operativo (últimos 5 años)", ["Mayor al 50%", "Entre 25% y 50%", "Menor al 25%"]),
-    ("q42", "Cash Flow", "Amortiza deuda sin depender de nueva deuda", ["Emite nueva deuda para repagar", "Emite menos de lo que devuelve", "No emite nueva deuda"]),
-    ("q43", "Cash Flow", "Política de capital (recompras / dilución)", ["Emite acciones", "Ni emite ni recompra", "Recompra acciones"]),
-    ("q44", "Cash Flow", "¿Cuánto del flujo operativo se convierte realmente en flujo de caja libre?",
-     ["FCF menor que el OCF", "FCF similar al OCF", "FCF cercano al OCF o igual al OCF"]),
+    # ---------------- Análisis financiero (versión 2: criterios de Buffett, 10 años, sin dobles conteos)
+    ("f01", "PyG", "Crecimiento de ventas: calidad y constancia (10 años)",
+     ["Crecimiento <3 % anual o 3+ años de caída", "Crecimiento 3–8 % anual o 1–2 años de caída",
+      "Crecimiento ≥8 % anual, ≤1 caída y adquisiciones <25 % del flujo operativo"]),
+    ("f02", "PyG", "Nivel y estabilidad del margen bruto (10 años)",
+     ["Margen medio <20 % o rango >15 pp", "Margen medio 20–40 % o rango 5–15 pp", "Margen medio ≥40 % y rango ≤5 pp"]),
+    ("f03", "PyG", "Peso de la estructura: gastos comerciales y generales / margen bruto",
+     ["Más del 80 %", "Entre 30 % y 80 %", "Menos del 30 %"]),
+    ("f04", "PyG", "Margen neto sostenido (media y mínimo de 10 años)",
+     ["Media <10 %", "Media 10–20 %", "Media ≥20 % y mínimo ≥10 %"]),
+    ("f05", "PyG", "Carga financiera: intereses / resultado operativo (5 años)",
+     ["Más del 30 %", "Entre 15 % y 30 %", "Menos del 15 %"]),
+    ("f06", "PyG", "Consistencia del BPA (10 años)",
+     ["Alguna pérdida o 3+ años de caída", "1–2 años de caída, sin pérdidas", "≤1 caída, sin pérdidas y crecimiento ≥8 % anual"]),
+    ("f07", "Balance", "Años de beneficio neto para pagar toda la deuda",
+     ["Más de 5 años", "Entre 3 y 5 años", "Menos de 3 años"]),
+    ("f08", "Balance", "Deuda ajustada: pasivo / (patrimonio + autocartera)",
+     ["Mayor a 0,8", "Entre 0,6 y 0,8", "Menor a 0,6"]),
+    ("f09", "Balance", "Liquidez real: (caja + clientes) / (pasivo corriente − ingresos diferidos)",
+     ["Menor a 0,5", "Entre 0,5 y 1", "1 o más"]),
+    ("f10", "Balance", "Disciplina del circulante: clientes + existencias frente a ventas (5 años)",
+     ["Crecen más de 5 pp/año por encima de las ventas", "Crecen hasta 5 pp/año por encima", "Crecen igual o menos que las ventas"]),
+    ("f11", "Balance", "Intensidad de activos fijos: inmovilizado / activo",
+     ["Mayor al 40 %", "Entre 20 % y 40 %", "Menor al 20 %"]),
+    ("f12", "Balance", "Rentabilidad sostenida del capital: años (de 10) con ROE >15 % y ROIC >15 %",
+     ["Menos de 5 años", "Entre 5 y 7 años", "8 años o más"]),
+    ("f13", "Cash Flow", "Calidad del beneficio: (flujo operativo − remuneración en acciones) / beneficio neto (5 años)",
+     ["Menor a 0,8", "Entre 0,8 y 1,0", "1,0 o más"]),
+    ("f14", "Cash Flow", "Necesidad de reinversión: capex / beneficio neto (10 años)",
+     ["Más del 50 %", "Entre 25 % y 50 %", "Menos del 25 %"]),
+    ("f15", "Cash Flow", "Crecimiento del beneficio del propietario por acción (10 años)",
+     ["Menos del 3 % anual", "Entre 3 % y 10 % anual", "10 % anual o más"]),
+    ("f16", "Asignación de capital", "Rentabilidad del beneficio retenido: aumento del BPA / BPA no repartido (10 años)",
+     ["Menos del 8 %", "Entre 8 % y 15 %", "15 % o más"]),
+    ("f17", "Asignación de capital", "Beneficios retenidos crecientes (reservas, 10 años)",
+     ["Caen", "Crecen 0–7 % anual", "Crecen ≥7 % anual"]),
+    ("f18", "Asignación de capital", "Recompras eficaces: variación anual de acciones diluidas (5 años)",
+     ["Las acciones aumentan", "Bajan entre 0 % y 2 % al año", "Bajan 2 % al año o más"]),
+    ("f19", "Asignación de capital", "Coste real de pagar en acciones: remuneración en acciones / flujo de caja libre",
+     ["Más del 25 %", "Entre 10 % y 25 %", "Menos del 10 %"]),
+    ("f20", "Asignación de capital", "Financiación sana: deuda neta emitida / flujo de caja libre acumulado (10 años)",
+     ["Más del 25 %", "Entre 0 % y 25 %", "No se endeuda (≤0)"]),
+    ("f21", "Asignación de capital", "Crecimiento comprado: fondo de comercio e intangibles",
+     ["Más del 50 % del activo o crece más que las ventas", "Entre 20 % y 50 % del activo", "Menos del 20 % del activo o estable"]),
 ]
 
 QUALITATIVE_BLOCKS = ["Operativo", "Producto", "Dirección", "Estrategia", "Valores y cultura", "Sector y posicionamiento"]
-FINANCIAL_BLOCKS = ["PyG", "Balance", "Cash Flow"]
+FINANCIAL_BLOCKS = ["PyG", "Balance", "Cash Flow", "Asignación de capital"]
+NA = "No aplica"
 BLOCK_SUBTITLE = {"Operativo": "¿cómo se gana dinero hoy?", "Producto": "¿hay futuro?", "Dirección": "¿se puede confiar en quien ejecuta?",
                   "Estrategia": "¿tiene plan para escalar?", "Valores y cultura": "¿la empresa puede perdurar con su cultura?",
-                  "Sector y posicionamiento": "¿el viento sopla a favor?"}
+                  "Sector y posicionamiento": "¿el viento sopla a favor?", "PyG": "¿gana dinero de forma duradera?",
+                  "Balance": "¿puede aguantar un mal momento?", "Cash Flow": "¿el beneficio se convierte en caja?",
+                  "Asignación de capital": "¿qué hace la dirección con el dinero?"}
 Q = {q[0]: q for q in QUESTIONS}
-
-# Umbrales de las propuestas automáticas (cámbialos aquí si quieres otro criterio).
-T = {
-    "growth_std_consistent": 0.06,   # desviación del crecimiento anual para «consistente»
-    "gm_range_defensible": 0.05, "gm_range_reasonable": 0.10,
-    "ni_ebit_low_dep": 0.75, "ni_ebit_mod_dep": 0.60,
-    "cash_change": 0.10,
-    "inv_gap_aligned": 0.02, "inv_gap_slight": 0.07,
-    "ocf_cl_ample": 0.80, "ocf_cl_partial": 0.40,
-    "solvency_change": 0.02,
-    "shares_change": 0.005,
-    "ocf_ni_high": 1.10, "ocf_ni_low": 0.90,
-    "cagr_gap": 0.02,
-    "fcf_ocf_close": 0.90, "fcf_ocf_similar": 0.75,
-}
 
 
 def _d(a, b):
@@ -115,7 +121,7 @@ def _d(a, b):
 
 
 def _cagr(last, first, n):
-    if last is None or first is None or first <= 0 or last <= 0:
+    if last is None or first is None or first <= 0 or last <= 0 or n <= 0:
         return None
     return (last / first) ** (1 / n) - 1
 
@@ -124,136 +130,230 @@ def _pct(x):
     return "n.d." if x is None else f"{x:.1%}"
 
 
+def _band(x, lo, hi, higher_is_better=True):
+    """3 bandas: devuelve 1, 2 o 3 puntos."""
+    if higher_is_better:
+        return 3 if x >= hi else 2 if x >= lo else 1
+    return 3 if x < lo else 2 if x <= hi else 1
+
+
 def suggestions(f: Financials, stats: dict) -> dict[str, tuple[int, str]]:
-    """{id_pregunta: (puntos propuestos 1-3, explicación con el dato)}. Solo bloques financieros."""
+    """{id: (puntos, explicación)}. Puntos 0 = «No aplica» (no cuenta en la media)."""
     ys = f.years
     L = ys[-1]
+    n = len(ys) - 1
+    last5 = ys[-5:]
     y5 = ys[-6] if len(ys) >= 6 else ys[0]
     n5 = ys.index(L) - ys.index(y5)
-    last5 = ys[-5:]
     s: dict[str, tuple[int, str]] = {}
 
-    def S(k):
-        return sum((f.get(k, y) or 0) for y in last5)
+    def ser(k):
+        return [f.get(k, y) for y in ys]
 
-    growth = [g for g in stats.get("growth_series", {}).values() if g is not None]
-    if growth:
-        mean = sum(growth) / len(growth)
-        std = (sum((g - mean) ** 2 for g in growth) / len(growth)) ** 0.5
-        pts = 3 if (stats["years_down"] == 0 and std < T["growth_std_consistent"]) else 2 if stats["years_down"] <= 1 else 1
-        s["q22"] = (pts, f"{stats['years_down']} años con caída de ventas; crecimiento medio {mean:.1%}, desviación {std:.1%}. «Orgánico» no se ve en los datos: revísalo.")
-    if stats.get("gm_max") is not None:
-        rng = stats["gm_max"] - stats["gm_min"]
-        pts = 3 if rng < T["gm_range_defensible"] else 2 if rng < T["gm_range_reasonable"] else 1
-        s["q23"] = (pts, f"Margen bruto entre {stats['gm_min']:.1%} y {stats['gm_max']:.1%} (rango {rng:.1%}); último {stats['gm_last']:.1%}.")
-    nm = _d(f.get("net_income", L), f.get("revenue", L))
-    if nm is not None:
-        s["q25"] = (3 if nm > 0.30 else 2 if nm >= 0.15 else 1, f"Margen neto {L}: {nm:.1%} (media 5 años {_pct(_d(S('net_income'), S('revenue')))}).")
-    ni_ebit = _d(f.get("net_income", L), f.get("operating_income", L))
-    if ni_ebit is not None:
-        pts = 3 if ni_ebit >= T["ni_ebit_low_dep"] else 2 if ni_ebit >= T["ni_ebit_mod_dep"] else 1
-        s["q26"] = (pts, f"Beneficio neto / EBIT = {ni_ebit:.0%}: lo que se quedan intereses e impuestos.")
-    nis = [f.get("net_income", y) for y in ys]
-    if all(v is not None for v in nis):
-        losses = sum(1 for v in nis if v <= 0)
-        drops = sum(1 for a, b in zip(nis, nis[1:]) if b < a)
-        pts = 1 if (losses or drops > 2) else 3 if drops == 0 else 2
-        s["q27"] = (pts, f"{drops} años con caída del beneficio y {losses} con pérdidas en {len(ys)} ejercicios.")
-    c0, c1 = f.get("cash_sti", y5), f.get("cash_sti", L)
-    if c0 and c1 is not None:
-        ch = c1 / c0 - 1
-        s["q28"] = (3 if ch > T["cash_change"] else 1 if ch < -T["cash_change"] else 2, f"Caja e inversiones a corto {y5}→{L}: {ch:+.1%}.")
-    debt = (f.get("st_debt", L) or 0) + (f.get("lt_debt", L) or 0)
-    eq = f.get("equity", L)
-    if eq is not None:
-        de = _d(debt, eq) if eq > 0 else None
-        pts = 1 if (eq <= 0 or (de is not None and de > 0.8)) else 2 if de >= 0.6 else 3
-        s["q29"] = (pts, f"Deuda financiera / patrimonio = {('patrimonio negativo' if eq <= 0 else f'{de:.2f}')} (deuda {debt:,.0f} M). No incluye arrendamientos.")
-    inv0, inv1 = f.get("inventory", y5), f.get("inventory", L)
-    if not inv1:
-        s["q30"] = (3, "Sin existencias relevantes en balance.")
+    def S(k, years):
+        return sum((f.get(k, y) or 0) for y in years)
+
+    rev, ni, eps = ser("revenue"), ser("net_income"), ser("eps_diluted")
+
+    # --- PyG
+    g10 = _cagr(rev[-1], rev[0], n)
+    downs = sum(1 for a, b in zip(rev, rev[1:]) if a is not None and b is not None and b < a)
+    acq = -S("acquisitions", ys) / S("ocf", ys) if S("ocf", ys) > 0 else 0
+    if g10 is not None:
+        pts = 3 if (g10 >= 0.08 and downs <= 1 and acq < 0.25) else 1 if (g10 < 0.03 or downs >= 3) else 2
+        s["f01"] = (pts, f"Ventas {ys[0]}→{L}: {g10:+.1%} anual; {downs} años de caída; adquisiciones = {acq:.0%} del flujo operativo acumulado.")
+    gms = [_d(f.get("gross_profit", y), f.get("revenue", y)) for y in ys]
+    gms = [x for x in gms if x is not None]
+    if gms and f.get("cogs", L):
+        avg, rng = sum(gms) / len(gms), max(gms) - min(gms)
+        pts = 3 if (avg >= 0.40 and rng <= 0.05) else 1 if (avg < 0.20 or rng > 0.15) else 2
+        s["f02"] = (pts, f"Margen bruto medio {avg:.1%}, entre {min(gms):.1%} y {max(gms):.1%} (rango {rng * 100:.1f} pp). Buffett: >40 % sostenido.")
     else:
-        gi, gr = _cagr(inv1, inv0, n5), _cagr(f.get("revenue", L), f.get("revenue", y5), n5)
-        if gi is not None and gr is not None:
-            gap = gi - gr
-            pts = 3 if gap <= T["inv_gap_aligned"] else 2 if gap <= T["inv_gap_slight"] else 1
-            s["q30"] = (pts, f"Existencias crecen {gi:.1%}/año frente a ventas {gr:.1%}/año ({n5} años).")
-    rs = _d(f.get("receivables", L), f.get("revenue", L))
-    if rs is not None:
-        s["q31"] = (3 if rs < 0.15 else 2 if rs <= 0.30 else 1, f"Clientes / ventas = {rs:.1%}.")
+        s["f02"] = (0, "Sin coste de ventas separado (bancos, aseguradoras, algunos servicios): no aplica.")
+    sga_gp = _d(S("sga", last5), S("gross_profit", last5))
+    if sga_gp is not None and S("sga", last5) > 0:
+        s["f03"] = (_band(sga_gp, 0.30, 0.80, False), f"Gastos comerciales y generales / margen bruto (5 años) = {sga_gp:.0%}. Buffettología: <30 % excelente, >80 % malo.")
+    nms = [_d(a, b) for a, b in zip(ni, rev)]
+    nms = [x for x in nms if x is not None]
+    if nms:
+        avg, mn = sum(nms) / len(nms), min(nms)
+        pts = 3 if (avg >= 0.20 and mn >= 0.10) else 2 if avg >= 0.10 else 1
+        s["f04"] = (pts, f"Margen neto medio {avg:.1%}, mínimo {mn:.1%} ({len(nms)} años).")
+    ie, op = S("interest_expense", last5), S("operating_income", last5)
+    if op > 0 and any(f.get("interest_expense", y) is not None for y in last5):
+        s["f05"] = (_band(ie / op, 0.15, 0.30, False), f"Intereses / resultado operativo (5 años) = {ie / op:.1%}. Buffett: <15 %.")
+    elif op <= 0:
+        s["f05"] = (1, "Resultado operativo acumulado negativo.")
+    e = [x for x in eps if x is not None]
+    if len(e) >= 5:
+        losses = sum(1 for x in e if x <= 0)
+        edowns = sum(1 for a, b in zip(e, e[1:]) if b < a)
+        ge = _cagr(e[-1], e[0], len(e) - 1)
+        pts = 1 if (losses or edowns >= 3) else 3 if (edowns <= 1 and ge is not None and ge >= 0.08) else 2
+        s["f06"] = (pts, f"BPA {ys[0]}→{L}: {_pct(ge)} anual; {edowns} caídas y {losses} años con pérdidas.")
+
+    # --- Balance
+    debt = (f.get("lt_debt", L) or 0) + (f.get("st_debt", L) or 0)
+    ni3 = sum(x for x in ni[-3:] if x is not None) / max(1, len([x for x in ni[-3:] if x is not None]))
+    if ni3 > 0:
+        yrs = debt / ni3
+        s["f07"] = (_band(yrs, 3, 5, False), f"Deuda financiera {debt:,.0f} M / beneficio medio 3 años {ni3:,.0f} M = {yrs:.1f} años. Buffett: <3–4 años.")
+    else:
+        s["f07"] = (1 if debt > 0 else 3, "Beneficio medio negativo." if debt > 0 else "Sin deuda financiera.")
+    eq, tl = f.get("equity", L), f.get("total_liabilities", L)
+    ts = f.get("treasury_stock", L)
+    if eq is not None and tl is not None:
+        if ts:
+            base, how = eq + ts, f"autocartera {ts:,.0f} M"
+        else:
+            bb = S("buybacks", ys)
+            base, how = eq + bb, f"recompras acumuladas {bb:,.0f} M (la empresa amortiza las acciones)"
+        if base > 0:
+            r = tl / base
+            s["f08"] = (_band(r, 0.6, 0.8, False), f"Pasivo {tl:,.0f} M / (patrimonio {eq:,.0f} M + {how}) = {r:.2f}. Buffettología: <0,8.")
+        else:
+            s["f08"] = (1, "Patrimonio ajustado negativo.")
+    cl = f.get("current_liabilities", L)
+    if cl:
+        dr = f.get("deferred_rev_current", L) or 0
+        quick = ((f.get("cash_sti", L) or 0) + (f.get("receivables", L) or 0)) / max(cl - dr, 1e-9)
+        s["f09"] = (_band(quick, 0.5, 1.0), f"(Caja + clientes) / (pasivo corriente − ingresos diferidos {dr:,.0f} M) = {quick:.2f}.")
+    wc0 = (f.get("receivables", y5) or 0) + (f.get("inventory", y5) or 0)
+    wc1 = (f.get("receivables", L) or 0) + (f.get("inventory", L) or 0)
+    gw, gr = _cagr(wc1, wc0, n5), _cagr(f.get("revenue", L), f.get("revenue", y5), n5)
+    if gw is not None and gr is not None:
+        gap = gw - gr
+        s["f10"] = (_band(gap, 0.0, 0.05, False) if gap > 0 else 3,
+                    f"Clientes + existencias {gw:+.1%}/año frente a ventas {gr:+.1%}/año ({n5} años): diferencia {gap * 100:+.1f} pp.")
     pa = _d(f.get("ppe", L), f.get("total_assets", L))
     if pa is not None:
-        s["q32"] = (3 if pa < 0.20 else 2 if pa <= 0.40 else 1, f"Inmovilizado material / activo = {pa:.1%}.")
-    ocf = f.get("ocf", L)
-    ocl = _d(ocf, f.get("current_liabilities", L))
-    if ocl is not None:
-        pts = 3 if ocl >= T["ocf_cl_ample"] else 2 if ocl >= T["ocf_cl_partial"] else 1
-        s["q33"] = (pts, f"OCF / pasivo corriente = {ocl:.2f}. Ojo: en software el pasivo corriente incluye ingresos diferidos.")
-    if ocf and ocf > 0:
-        st_ = f.get("st_debt", L) or 0
-        yrs = st_ / ocf
-        s["q34"] = (3 if yrs < 1 else 2 if yrs <= 2 else 1, f"Deuda a corto ({st_:,.0f} M) / OCF = {yrs:.2f} años.")
-        lt = f.get("lt_debt", L) or 0
-        yl = lt / ocf
-        s["q35"] = (3 if yl < 3 else 2 if yl <= 5 else 1, f"Deuda a largo ({lt:,.0f} M) / OCF = {yl:.2f} años.")
-    elif ocf is not None:
-        s["q34"] = (1, "OCF negativo: no puede repagar deuda con caja operativa.")
-        s["q35"] = (1, "OCF negativo: no puede repagar deuda con caja operativa.")
-    sol0 = _d(f.get("total_assets", y5), f.get("total_liabilities", y5))
-    sol1 = _d(f.get("total_assets", L), f.get("total_liabilities", L))
-    if sol0 and sol1:
-        ch = sol1 - sol0
-        pts = 3 if ch > T["solvency_change"] else 1 if ch < -T["solvency_change"] else 2
-        s["q36"] = (pts, f"Activo / pasivo {y5}: {sol0:.2f} → {L}: {sol1:.2f}. (Recompras grandes bajan este ratio aunque la empresa sea sólida.)")
+        s["f11"] = (_band(pa, 0.20, 0.40, False), f"Inmovilizado / activo = {pa:.1%}.")
+    good = 0
+    counted = 0
+    for y in ys[-10:]:
+        e_, n_ = f.get("equity", y), f.get("net_income", y)
+        op_, tx, pt = f.get("operating_income", y), f.get("taxes", y), f.get("pretax", y)
+        ic = (f.get("lt_debt", y) or 0) + (e_ or 0) - (f.get("cash_sti", y) or 0)
+        if n_ is None or e_ is None or op_ is None:
+            continue
+        counted += 1
+        t = min(max(_d(tx, pt) or 0.21, 0), 0.35) if (pt and pt > 0) else 0.21
+        roe = n_ / e_ if e_ > 0 else None
+        roic = op_ * (1 - t) / ic if ic > 0 else (1.0 if op_ > 0 else None)  # capital invertido negativo con beneficios = rentabilidad altísima
+        if roe is not None and roic is not None and roe > 0.15 and roic > 0.15:
+            good += 1
+        elif roe is None and e_ <= 0 and roic is not None and roic > 0.15:
+            good += 1  # patrimonio negativo por recompras: se juzga por el ROIC
+    if counted:
+        s["f12"] = (3 if good >= 8 else 2 if good >= 5 else 1, f"{good} de {counted} años con ROE y ROIC por encima del 15 %.")
+
+    # --- Cash Flow
+    ocf5, sbc5, ni5 = S("ocf", last5), S("sbc", last5), S("net_income", last5)
+    if ni5 > 0:
+        q = (ocf5 - sbc5) / ni5
+        s["f13"] = (_band(q, 0.8, 1.0), f"(Flujo operativo {ocf5:,.0f} − SBC {sbc5:,.0f}) / beneficio {ni5:,.0f} (5 años) = {q:.2f}.")
+    else:
+        s["f13"] = (1, "Beneficio acumulado negativo en 5 años.")
+    capex10, ni10 = -S("capex", ys), S("net_income", ys)
+    if ni10 > 0:
+        c = capex10 / ni10
+        s["f14"] = (_band(c, 0.25, 0.50, False), f"Capex {capex10:,.0f} M / beneficio {ni10:,.0f} M ({len(ys)} años) = {c:.0%}. Buffett: <25 % excelente, <50 % bueno.")
+    oe = []
+    for y in ys:
+        n_, da, cx, sb, sh = (f.get(k, y) for k in ("net_income", "da", "capex", "sbc", "shares_diluted"))
+        oe.append((n_ + (da or 0) + (cx or 0) - (sb or 0)) / sh if (n_ is not None and sh) else None)
+    pairs = [(i, x) for i, x in enumerate(oe) if x is not None and x > 0]
+    if len(pairs) >= 2 and oe[-1] is not None:
+        i0, v0 = pairs[0]
+        g = _cagr(oe[-1], v0, len(ys) - 1 - i0)
+        if g is None:
+            s["f15"] = (1, f"Beneficio del propietario por acción negativo en {L} ({oe[-1]:.2f}).")
+        else:
+            s["f15"] = (_band(g, 0.03, 0.10), f"Beneficio del propietario por acción {ys[i0]}: {v0:.2f} → {L}: {oe[-1]:.2f} ({g:+.1%} anual). "
+                                                "= beneficio + amortizaciones − capex − remuneración en acciones.")
+    else:
+        s["f15"] = (1, "Beneficio del propietario negativo o sin datos.")
+
+    # --- Asignación de capital
+    dps = [abs(f.get("dividends", y) or 0) / (f.get("shares_diluted", y) or 1) for y in ys]
+    retained = sum((e_ or 0) - d_ for e_, d_ in zip(eps[:-1], dps[:-1]))
+    if eps[-1] is not None and eps[0] is not None:
+        if retained > 0:
+            rr = (eps[-1] - eps[0]) / retained
+            s["f16"] = (_band(rr, 0.08, 0.15), f"BPA {ys[0]}→{L}: +{eps[-1] - eps[0]:.2f} con {retained:.2f} de BPA retenido acumulado = {rr:.0%} "
+                                               "(lo que rinde cada dólar que la empresa no reparte).")
+        else:
+            s["f16"] = (1, "No ha retenido beneficio (pérdidas o reparte más de lo que gana).")
+    re0, re1 = f.get("retained_earnings", ys[0]), f.get("retained_earnings", L)
+    if re0 is not None and re1 is not None:
+        gre = _cagr(re1, re0, n) if re0 > 0 else None
+        if re1 < re0:
+            s["f17"] = (1, f"Reservas {ys[0]}: {re0:,.0f} M → {L}: {re1:,.0f} M (caen; ojo si es por amortizar acciones recompradas).")
+        else:
+            s["f17"] = (3 if (gre is not None and gre >= 0.07) else 2, f"Reservas {ys[0]}: {re0:,.0f} M → {L}: {re1:,.0f} M ({_pct(gre)} anual).")
     shc = stats.get("share_chg5")
     if shc is not None:
-        pts = 3 if shc < -T["shares_change"] else 1 if shc > T["shares_change"] else 2
-        s["q37"] = (pts, f"Acciones diluidas: {shc:+.2%} anual en 5 años.")
-    if stats.get("roe5") is not None:
-        r5 = stats["roe5"]
-        s["q38"] = (3 if r5 > 0.25 else 2 if r5 >= 0.15 else 1, f"ROE medio 5 años = {r5:.1%} (último {_pct(_d(f.get('net_income', L), eq) if eq and eq > 0 else None)}).")
-    on = _d(S("ocf"), S("net_income"))
-    if on is not None and S("net_income") > 0:
-        pts = 3 if on > T["ocf_ni_high"] else 1 if on < T["ocf_ni_low"] else 2
-        s["q39"] = (pts, f"OCF / beneficio neto (5 años) = {on:.2f}. Incluye la remuneración en acciones sumada al OCF.")
-    go = _cagr(f.get("ocf", L), f.get("ocf", y5), n5)
-    gn = _cagr(f.get("net_income", L), f.get("net_income", y5), n5)
-    if go is not None and gn is not None:
-        gap = go - gn
-        pts = 3 if gap > T["cagr_gap"] else 1 if gap < -T["cagr_gap"] else 2
-        s["q40"] = (pts, f"CAGR {n5} años: OCF {go:.1%} vs beneficio {gn:.1%}.")
-    if S("ocf") > 0:
-        co = -S("capex") / S("ocf")
-        s["q41"] = (3 if co < 0.25 else 2 if co <= 0.50 else 1, f"Capex / OCF (5 años) = {co:.1%}.")
-        fo = 1 - co
-        pts = 3 if fo >= T["fcf_ocf_close"] else 2 if fo >= T["fcf_ocf_similar"] else 1
-        s["q44"] = (pts, f"FCF / OCF (5 años) = {fo:.1%}.")
-    iss, rep = S("debt_issued"), S("debt_repaid")
-    if iss == 0:
-        s["q42"] = (3, f"No ha emitido deuda en 5 años (ha devuelto {rep:,.0f} M).")
-    else:
-        s["q42"] = (2 if iss < rep else 1, f"5 años: emitida {iss:,.0f} M, devuelta {rep:,.0f} M.")
-    en = S("equity_net")
-    if any(f.get("equity_net", y) is not None for y in last5):
-        s["q43"] = (3 if en < 0 else 1 if en > 0 else 2, f"Emisión − recompra de acciones (5 años) = {en:,.0f} M.")
+        s["f18"] = (3 if shc <= -0.02 else 2 if shc < 0 else 1, f"Acciones diluidas: {shc:+.2%} anual en 5 años (ya incluye la emisión por remuneración en acciones).")
+    fcf_l = (f.get("ocf", L) or 0) + (f.get("capex", L) or 0)
+    sbc_l = f.get("sbc", L) or 0
+    if fcf_l > 0:
+        r = sbc_l / fcf_l
+        s["f19"] = (_band(r, 0.10, 0.25, False), f"Remuneración en acciones {sbc_l:,.0f} M / flujo de caja libre {fcf_l:,.0f} M = {r:.0%} ({L}).")
+    elif sbc_l > 0:
+        s["f19"] = (1, "Flujo de caja libre negativo y paga en acciones.")
+    net_debt_issued = S("debt_issued", ys) - S("debt_repaid", ys)
+    fcf_cum = sum((f.get("ocf", y) or 0) + (f.get("capex", y) or 0) for y in ys)
+    if any(f.get("debt_net", y) is not None for y in ys) or net_debt_issued == 0:
+        if fcf_cum > 0:
+            r = net_debt_issued / fcf_cum
+            s["f20"] = (3 if r <= 0 else 2 if r <= 0.25 else 1,
+                        f"Deuda neta emitida {net_debt_issued:,.0f} M / flujo de caja libre acumulado {fcf_cum:,.0f} M ({len(ys)} años) = {r:.0%}.")
+        else:
+            s["f20"] = (1 if net_debt_issued > 0 else 2, "Flujo de caja libre acumulado negativo.")
+    gi0, gi1 = f.get("goodwill_intangibles", y5), f.get("goodwill_intangibles", L)
+    ta = f.get("total_assets", L)
+    if gi1 is not None and ta:
+        share = gi1 / ta
+        ggi = _cagr(gi1, gi0, n5) if gi0 else None
+        bought = ggi is not None and gr is not None and ggi > gr + 0.02 and share > 0.2
+        pts = 1 if (share > 0.5 or bought) else 2 if share >= 0.2 else 3
+        s["f21"] = (pts, f"Fondo de comercio + intangibles = {share:.0%} del activo; {_pct(ggi)} anual en {n5} años frente a ventas {_pct(gr)}.")
+    elif ta:
+        s["f21"] = (3, "Sin fondo de comercio ni intangibles relevantes.")
+
+    # Bancos, aseguradoras y financieras: sin balance clasificado (corriente / no corriente) y apalancamiento estructural.
+    tl_, ta_ = f.get("total_liabilities", L), f.get("total_assets", L)
+    if f.get("current_assets", L) is None and tl_ and ta_ and tl_ / ta_ > 0.8:
+        why = "Entidad financiera (banco, aseguradora o similar): esta métrica no tiene sentido para su modelo de negocio."
+        for k in ("f02", "f03", "f05", "f08", "f09", "f10", "f11", "f12", "f13", "f14", "f19", "f20"):
+            s[k] = (0, why)
+    for qid, block, *_ in QUESTIONS:
+        if block in FINANCIAL_BLOCKS and qid not in s:
+            s[qid] = (0, "Sin datos suficientes en los 10-K (XBRL) para calcularla: queda como «No aplica». Contéstala tú si la conoces.")
     return s
 
 
 def score(answers: dict[str, int | None]) -> dict:
-    """answers: {id: puntos 1-3 o None}. Devuelve notas por bloque y totales (sobre 10)."""
+    """answers: {id: 1-3 puntos, 0 = No aplica, None = sin responder}. Notas sobre 10.
+    Sin responder cuenta 0 (como en tu Excel); «No aplica» no cuenta en la media del bloque."""
     blocks: dict[str, dict] = {}
     for qid, block, *_ in QUESTIONS:
-        b = blocks.setdefault(block, {"pts": 0, "n": 0, "answered": 0})
-        b["n"] += 1
+        b = blocks.setdefault(block, {"pts": 0, "n": 0, "answered": 0, "na": 0})
         p = answers.get(qid)
+        if p == 0:
+            b["na"] += 1
+            continue
+        b["n"] += 1
         if p:
             b["pts"] += p
             b["answered"] += 1
     for b in blocks.values():
-        b["nota"] = b["pts"] / b["n"] / 3 * 10
-    qual = sum(blocks[b]["nota"] for b in QUALITATIVE_BLOCKS) / len(QUALITATIVE_BLOCKS)
-    fin = sum(blocks[b]["nota"] for b in FINANCIAL_BLOCKS) / len(FINANCIAL_BLOCKS)
-    answered = sum(b["answered"] for b in blocks.values())
+        b["nota"] = (b["pts"] / b["n"] / 3 * 10) if b["n"] else None
+    qv = [blocks[b]["nota"] for b in QUALITATIVE_BLOCKS if blocks[b]["nota"] is not None]
+    fv = [blocks[b]["nota"] for b in FINANCIAL_BLOCKS if blocks[b]["nota"] is not None]
+    qual = sum(qv) / len(qv) if qv else 0.0
+    fin = sum(fv) / len(fv) if fv else 0.0
+    answered = sum(b["answered"] + b["na"] for b in blocks.values())
     return {"blocks": blocks, "cualitativa": qual, "financiera": fin, "final": (qual + fin) / 2,
             "respondidas": answered, "total": len(QUESTIONS),
             "cual_respondidas": sum(blocks[b]["answered"] for b in QUALITATIVE_BLOCKS)}

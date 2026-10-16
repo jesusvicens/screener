@@ -20,7 +20,7 @@ Terminal personal para analizar cotizadas de EE. UU. con tu propio modelo (el Ex
 
 ### Cómo funciona el examen
 - Bloques cualitativos (Operativo, Producto, Dirección, Estrategia, Valores, Sector): los contestas tú. En la pestaña hay un texto listo para pegar en tu chat de Claude y trabajarlos ahí.
-- Bloques financieros (PyG, Balance, Cash Flow): la terminal **propone** la respuesta con los datos y te enseña el número; tú la cambias si no estás de acuerdo. Los umbrales están en `terminal/exam.py` (diccionario `T`).
+- Bloques financieros (PyG, Balance, Cash Flow y Asignación de capital, 21 preguntas con criterios de Buffett y 10 años de datos): la terminal **propone** la respuesta y te enseña el cálculo; tú la cambias si no estás de acuerdo. «No aplica» no cuenta en la media (bancos, aseguradoras, datos que no existen). Las reglas están en `terminal/exam.py` (función `suggestions`).
 
 ### Escenarios
 Las casillas vacías usan la propuesta por fase de tu Excel (la ves en gris). Escribes encima para fijar tu supuesto y la borras para volver a la propuesta. El escenario **Desastre**, que en el Excel daba `#REF!`, aquí se calcula.

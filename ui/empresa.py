@@ -69,7 +69,7 @@ def _widget_defaults(T: str, saved: dict, sugg: dict) -> dict:
         pts = answers.get(qid)
         if pts is None and qid in sugg:
             pts = sugg[qid][0]
-        D[_key(T, qid)] = opts[pts - 1] if pts else "—"
+        D[_key(T, qid)] = opts[pts - 1] if pts else (E.NA if pts == 0 else "—")
     D[_key(T, "tesis")] = saved.get("notas", "")
     D[_key(T, "seguimiento")] = saved.get("seguimiento", "")
     rk = saved.get("riesgo") or {}
@@ -132,6 +132,8 @@ def _work_from_widgets(T: str) -> dict:
         v = s.get(_key(T, qid))
         if v in opts:
             ans[qid] = opts.index(v) + 1
+        elif v == E.NA:
+            ans[qid] = 0
     fase = s.get(_key(T, "fase"))
     return {"params": params, "precio_manual": bool(price), "supuestos": sup, "examen": ans,
             "fase": None if fase in (None, "(propuesta)") else fase,
@@ -374,8 +376,12 @@ def _tab_examen(T, ca):
     cols[1].metric("Cualitativa", f"{sc['cualitativa']:.2f}", f"{sc['cual_respondidas']}/20 respondidas")
     cols[2].metric("Financiera", f"{sc['financiera']:.2f}")
     cols[3].metric("Nota / 10 (Modelo EPS)", f"{sc['final'] / 10:.3f}")
-    st.caption("Las respuestas financieras vienen propuestas con los datos (debajo de cada una ves el número). Cámbialas si no estás de acuerdo. "
-               "Sin responder = 0 puntos, como en tu Excel.")
+    st.caption("Las respuestas financieras vienen propuestas con 10 años de datos y criterios de Buffett (debajo de cada una ves el cálculo). "
+               "Cámbialas si no estás de acuerdo. Sin responder = 0 puntos, como en tu Excel; «No aplica» no cuenta en la media del bloque.")
+    na_fin = sum(sc["blocks"][b]["na"] for b in E.FINANCIAL_BLOCKS)
+    if na_fin >= 6:
+        st.warning(f"{na_fin} de 21 preguntas financieras están en «No aplica» (típico de bancos y aseguradoras): "
+                   "la nota financiera se apoya en pocas métricas, úsala con cautela.")
     blocks = E.QUALITATIVE_BLOCKS + E.FINANCIAL_BLOCKS
     left, right = st.columns(2)
     for i, b in enumerate(blocks):
@@ -383,14 +389,19 @@ def _tab_examen(T, ca):
         with col:
             nb = sc["blocks"][b]
             sub = E.BLOCK_SUBTITLE.get(b, "")
-            st.markdown(f"### {b} <span class='subtle'>{sub}</span> <span class='pill am'>{nb['nota']:.2f}</span>", unsafe_allow_html=True)
+            nota_txt = "n.a." if nb["nota"] is None else f"{nb['nota']:.2f}"
+            st.markdown(f"### {b} <span class='subtle'>{sub}</span> <span class='pill am'>{nota_txt}</span>", unsafe_allow_html=True)
             for qid, qb, text, opts in E.QUESTIONS:
                 if qb != b:
                     continue
-                st.selectbox(text, ["—"] + opts, key=_key(T, qid))
+                choices = ["—"] + opts + ([E.NA] if b in E.FINANCIAL_BLOCKS else [])
+                if st.session_state.get(_key(T, qid)) not in choices:
+                    st.session_state[_key(T, qid)] = "—"
+                st.selectbox(text, choices, key=_key(T, qid))
                 if qid in ca.suggestions:
                     pts, why = ca.suggestions[qid]
-                    st.markdown(f"<div class='why'>Propuesta: {opts[pts - 1]} · {why}</div>", unsafe_allow_html=True)
+                    label = opts[pts - 1] if pts else E.NA
+                    st.markdown(f"<div class='why'>Propuesta: {label} · {why}</div>", unsafe_allow_html=True)
     with st.expander("Texto para trabajar el bloque cualitativo conmigo en el chat de Claude (usa tu plan, no la API)"):
         st.code(E.claude_prompt(ca.fin, ca.stats, st.session_state.get(_key(T, "tesis"), "")), language=None)
 
@@ -657,7 +668,7 @@ def _excel(ca) -> bytes:
         f.table(F.CASHFLOW_ROWS).to_excel(xw, sheet_name="Cash Flow")
         ca.eps_df.to_excel(xw, sheet_name="Modelo EPS")
         ca.roic_df.to_excel(xw, sheet_name="ROIC")
-        ex = [{"Bloque": b, "Pregunta": t, "Respuesta": (o[ca.answers[q] - 1] if ca.answers.get(q) else ""), "Puntos": ca.answers.get(q)}
+        ex = [{"Bloque": b, "Pregunta": t, "Respuesta": (o[ca.answers[q] - 1] if ca.answers.get(q) else (E.NA if ca.answers.get(q) == 0 else "")), "Puntos": ca.answers.get(q)}
               for q, b, t, o in E.QUESTIONS]
         pd.DataFrame(ex).to_excel(xw, sheet_name="Examen", index=False)
         pd.DataFrame(ca.scenarios).to_excel(xw, sheet_name="Supuestos")
