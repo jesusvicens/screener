@@ -360,17 +360,113 @@ def score(answers: dict[str, int | None]) -> dict:
 
 
 def claude_prompt(f: Financials, stats: dict, notes: str = "") -> str:
-    """Texto para pegar en tu chat de Claude (usa tu plan, no la API) y que te ayude con el bloque cualitativo."""
-    lines = [f"Ayúdame a contestar el bloque cualitativo de mi examen de inversión (estilo Fisher/Munger) para {f.name} ({f.ticker}).",
-             "Para cada pregunta elige UNA de las tres respuestas literales, justifícala en 2-3 frases con hechos verificables "
-             "(10-K, cartas a accionistas, resultados recientes) y dime qué evidencia me haría cambiar la respuesta. Busca información actual.",
-             "", f"Contexto cuantitativo: ventas {f.years[-1]} = {f.get('revenue', f.years[-1]):,.0f} M {f.currency}; crecimiento 3 años {_pct(stats.get('g3'))}; "
-             f"margen operativo {_pct(stats.get('om_last'))}; ROE medio 5 años {_pct(stats.get('roe5'))}; fase propuesta: {stats.get('phase')}.", ""]
+    """Texto para pegar en tu chat de Claude (usa tu plan, no la API). Pide la respuesta en JSON para pegarla de vuelta en la terminal."""
+    L = f.years[-1]
+    lines = [f"Actúa como analista de inversión al estilo de Philip Fisher y Charlie Munger. Contesta el bloque cualitativo de mi examen para "
+             f"{f.name} ({f.ticker}). Busca información actual (último 10-K, cartas a accionistas, resultados y noticias recientes, "
+             "Glassdoor, cambios en la dirección).",
+             "",
+             "Reglas: para cada pregunta elige el número (1, 2 o 3) de UNA de las respuestas literales. Justifica con hechos concretos y "
+             "verificables, con fuente y fecha. Si no hay evidencia suficiente, elige la opción más prudente y dilo. No seas complaciente: "
+             "el objetivo es evitar errores.",
+             "",
+             f"Contexto cuantitativo: ventas {L} = {(f.get('revenue', L) or 0):,.0f} M {f.currency}; crecimiento de ventas 3 años {_pct(stats.get('g3'))}; "
+             f"margen bruto {_pct(stats.get('gm_last'))}; margen operativo {_pct(stats.get('om_last'))}; ROE medio 5 años {_pct(stats.get('roe5'))}; "
+             f"fase propuesta: {stats.get('phase')}.", ""]
     for qid, block, text, opts in QUESTIONS:
         if block in QUALITATIVE_BLOCKS:
-            lines.append(f"[{block}] {text}")
+            lines.append(f"{qid} [{block}] {text}")
             for i, o in enumerate(opts, 1):
                 lines.append(f"   {i}) {o}")
     if notes:
-        lines += ["", f"Mis notas: {notes}"]
+        lines += ["", f"Mis notas sobre la empresa: {notes}"]
+    ids = [q[0] for q in QUESTIONS if q[1] in QUALITATIVE_BLOCKS]
+    ejemplo = ", ".join(f'"{q}": {{"respuesta": 2, "motivo": "…"}}' for q in ids[:2])
+    lines += ["", "Al final, devuelve SOLO un bloque JSON con esta forma exacta (todas las preguntas, de " + ids[0] + " a " + ids[-1] + "):",
+              "{" + ejemplo + ", …}"]
     return "\n".join(lines)
+
+
+def parse_claude_answer(text: str) -> tuple[dict[str, int], dict[str, str], list[str]]:
+    """Lee el JSON que devuelve Claude. Devuelve (respuestas, motivos, avisos)."""
+    import json
+    import re
+    warnings: list[str] = []
+    m = re.search(r"\{.*\}", text or "", re.S)
+    if not m:
+        return {}, {}, ["No encuentro ningún bloque JSON en el texto pegado."]
+    raw = m.group(0)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        try:
+            data = json.loads(re.sub(r",\s*([}\]])", r"\1", raw))
+        except json.JSONDecodeError as e:
+            return {}, {}, [f"El JSON no es válido: {e}"]
+    answers, reasons = {}, {}
+    valid = {q[0] for q in QUESTIONS if q[1] in QUALITATIVE_BLOCKS}
+    for k, v in data.items():
+        if k not in valid:
+            continue
+        pts = v.get("respuesta") if isinstance(v, dict) else v
+        try:
+            pts = int(pts)
+        except (TypeError, ValueError):
+            warnings.append(f"{k}: respuesta no válida ({pts}).")
+            continue
+        if pts not in (1, 2, 3):
+            warnings.append(f"{k}: respuesta fuera de rango ({pts}).")
+            continue
+        answers[k] = pts
+        if isinstance(v, dict) and v.get("motivo"):
+            reasons[k] = str(v["motivo"])
+    missing = valid - set(answers)
+    if missing:
+        warnings.append(f"Faltan {len(missing)} preguntas: {', '.join(sorted(missing))}.")
+    return answers, reasons, warnings
+
+
+# Por qué importa cada pregunta (se muestra en el «?» de cada una).
+HELP: dict[str, str] = {
+    "q02": "Un «monopolio del consumidor» (Buffett): marca o hábito que hace que el cliente vuelva sin que la empresa tenga que bajar precios.",
+    "q03": "Si el negocio depende de inventar sin parar, la ventaja es frágil: un competidor puede superarla. Puntúa más lo que no necesita I+D intensivo.",
+    "q04": "La prueba de fuego de una ventaja competitiva: subir precios con la inflación sin perder clientes.",
+    "q05": "Poder frente a proveedores = márgenes protegidos cuando suben los costes.",
+    "q06": "Si los clientes son pocos y grandes, ellos fijan el precio. Si la empresa es imprescindible, lo fija ella.",
+    "q07": "En recesión el cliente busca lo barato: ¿hay alternativas que lo sustituyan?",
+    "q08": "Fisher, punto 1: ¿hay mercado para crecer de forma considerable varios años?",
+    "q09": "Fisher, punto 2: ¿qué hará la dirección cuando los productos actuales maduren?",
+    "q10": "La continuidad y la cultura de la dirección pesan más que un CEO estrella. Fíjate en cuánto tiempo llevan y si se promociona desde dentro.",
+    "q11": "Fisher, punto 15, y Buffett: integridad incuestionable. Señales: retribución razonable, comunicación clara de los errores, sin contabilidad agresiva.",
+    "q12": "Cómo consigue clientes: ¿marketing diferencial y eficiente o compra de crecimiento con descuentos?",
+    "q13": "Fisher, punto 11: ¿la dirección sacrifica beneficios a corto por el largo plazo?",
+    "q14": "Fisher, punto 13: crecer emitiendo acciones diluye al accionista. Lo ideal: crecer con la caja que genera.",
+    "q15": "Credibilidad: compara lo que prometieron hace 3-5 años con lo que han hecho.",
+    "q16": "La cultura se ve en las decisiones difíciles, no en la web corporativa.",
+    "q17": "Fisher, puntos 6 y 7: buenas relaciones laborales y con los directivos = menos rotación y más productividad.",
+    "q18": "Equilibrio entre beneficio y sostenibilidad del negocio a largo plazo (licencia social, regulación).",
+    "q19": "Barreras de entrada: lo que impide que entren competidores atraídos por sus márgenes.",
+    "q20": "La ventaja competitiva concreta: costes, red, marca, cambio costoso para el cliente, patentes…",
+    "q21": "Un negocio que necesita poco capital puede crecer y repartir a la vez. Pregunta de juicio; la necesidad real de capex se mide en Cash Flow.",
+    "f01": "Buffett busca crecimiento constante y orgánico. Muchas caídas o crecimiento comprado con adquisiciones restan calidad.",
+    "f02": "Mary Buffett: un margen bruto superior al 40 % mantenido durante años es la señal más clara de ventaja competitiva duradera.",
+    "f03": "Buffettología: las empresas excelentes gastan menos del 30 % de su margen bruto en estructura comercial y administrativa; por encima del 80 % el negocio es muy competitivo.",
+    "f04": "Margen neto alto y estable durante 10 años, no en un buen año. Buffett: más del 20 % suele indicar ventaja; menos del 10 %, sector muy competido.",
+    "f05": "Las empresas con ventaja apenas necesitan deuda: sus intereses son menos del 15 % del resultado operativo.",
+    "f06": "Buffett quiere beneficios previsibles: BPA creciente, sin pérdidas y con pocas caídas en 10 años.",
+    "f07": "Criterio de Buffett: la empresa debería poder pagar toda su deuda con 3-4 años de beneficio.",
+    "f08": "Buffettología: «deuda ajustada» = pasivo / (patrimonio + acciones propias). Se suma la autocartera porque las recompras reducen el patrimonio sin empeorar el negocio.",
+    "f09": "Liquidez sin trampas: se restan los ingresos cobrados por adelantado (habituales en software), que son pasivo pero no salida de caja.",
+    "f10": "Si clientes y existencias crecen más que las ventas, la empresa está vendiendo a crédito o acumulando stock: suele preceder a problemas.",
+    "f11": "Mucho inmovilizado = mucho capital atado y más capex para mantenerse.",
+    "f12": "Buffett: rentabilidad sobre el capital alta y constante. Se exige ROE y ROIC a la vez para que ni la deuda ni las recompras inflen el dato.",
+    "f13": "El beneficio debe convertirse en caja. Se resta la remuneración en acciones porque el flujo operativo la suma aunque es un coste real para el accionista.",
+    "f14": "Buffett: las empresas con ventaja reinvierten menos del 25-50 % de su beneficio en capex. Si necesitan reinvertirlo casi todo, poco queda para el accionista.",
+    "f15": "El «owner earnings» de Buffett: beneficio + amortizaciones − capex − remuneración en acciones. Es lo que realmente podría llevarse el dueño.",
+    "f16": "La prueba de Buffettología: cuánto BPA extra genera cada dólar que la empresa retiene en lugar de repartir. Por debajo del 8-10 %, mejor que lo devolviera.",
+    "f17": "Buffett: los beneficios retenidos (reservas) deben crecer año tras año; es el motor del valor contable.",
+    "f18": "Las recompras solo crean valor si el número de acciones baja de verdad, después de las que se emiten para pagar a los empleados.",
+    "f19": "Pagar a los empleados en acciones es un coste real (dilución). Si se come una parte grande del flujo de caja libre, la caja «para el accionista» es menor de lo que parece.",
+    "f20": "Una empresa sana se financia con su propia caja. Emitir deuda para recomprar o pagar dividendos por encima de lo que genera es una señal de alerta.",
+    "f21": "Mucho fondo de comercio indica crecimiento comprado con adquisiciones: más riesgo de pagar de más y de deterioros futuros.",
+}

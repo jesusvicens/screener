@@ -1,6 +1,5 @@
 __pycache__/
 *.pyc
-data/cache/*
-!data/cache/.gitkeep
+data/cache/
 .streamlit/secrets.toml
 .venv/

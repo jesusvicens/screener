@@ -8,13 +8,14 @@ import pandas as pd
 import streamlit as st
 
 from terminal import pipeline, screener, storage
+from ui.ayuda import explica
 from ui.common import show_cols_table
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _screen_table(base_stamp: float, mk_stamp: float):
+def _screen_table(base_stamp: float, mk_stamp: float, notas_stamp: float = 0.0):
     base = screener.load_base(9999)
     mk, _age = screener.load_market()
-    return screener.with_valuation(base, mk)
+    return screener.with_notas(screener.with_valuation(base, mk))
 
 
 def _go_company(t: str):
@@ -56,6 +57,7 @@ def _on_preset():
 def screener_page():
     st.markdown("<span class='subtle'>SCREENER · TODAS LAS COTIZADAS DE EE. UU.</span>", unsafe_allow_html=True)
     st.markdown("# Screener")
+    explica("screener")
     base = screener.load_base(7)
     mk, mk_age = screener.load_market()
     c = st.columns([3, 1, 1])
@@ -72,9 +74,10 @@ def screener_page():
         mk_age = 0.0
     base_stamp = screener.BASE_FILE.stat().st_mtime
     mk_stamp = screener.PRICES_FILE.stat().st_mtime if screener.PRICES_FILE.exists() else 0.0
-    df = _screen_table(base_stamp, mk_stamp)
+    df = _screen_table(base_stamp, mk_stamp, screener.NOTAS_FILE.stat().st_mtime if screener.NOTAS_FILE.exists() else 0.0)
     Y = int(df["Año datos"].iloc[0])
-    c[0].caption(f"{len(df):,} empresas · fundamentales del ejercicio {Y} (SEC, hace {(time.time() - base_stamp) / 86400:.1f} días) · "
+    na_age = screener.notas_age_days()
+    c[0].caption(("" if na_age is None else f"Notas del examen financiero: hace {na_age:.0f} días · ") + f"{len(df):,} empresas · fundamentales del ejercicio {Y} (SEC, hace {(time.time() - base_stamp) / 86400:.1f} días) · "
                  f"precios hace {mk_age or 0:.0f} h · {df['Precio'].notna().sum():,} con cotización")
 
     # Streamlit borra el estado de los controles al cambiar de página: lo restauramos desde una copia.
@@ -133,7 +136,7 @@ def screener_page():
         sp[f"scr_lo_{m}"], sp[f"scr_hi_{m}"] = st.session_state.get(f"scr_lo_{m}"), st.session_state.get(f"scr_hi_{m}")
     res = screener.apply_filters(df, filters, exch, text, sectors, industries)
     st.markdown(f"## Resultado · {len(res):,} empresas")
-    core = ["Empresa", "Sector", "Precio", "Capitalización (M$)", "PER"]
+    core = ["Empresa", "Sector", "Precio", "Capitalización (M$)", "PER", "Nota financiera"]
     default_cols = core + [m for m in mets if m not in core]
     for extra in ("CAGR ventas 5a", "CAGR BPA 5a", "ROE", "Margen operativo"):
         if extra not in default_cols and len(default_cols) < 12:
@@ -146,7 +149,8 @@ def screener_page():
     asc = oc[2].toggle("Ascendente", False)
     out = res.sort_values(sort_by, ascending=asc, na_position="last")[["Ticker"] + cols].head(1000).set_index("Ticker")
     kinds = {m: k for m, k in screener.METRIC_KIND.items()}
-    kinds.update({"BPA": "ps", "Precio": "ps", "Años caída ventas": "int", "Años caída BPA": "int", "Años con pérdidas": "int"})
+    kinds.update({"BPA": "ps", "Precio": "ps", "Años caída ventas": "int", "Años caída BPA": "int", "Años con pérdidas": "int",
+                  "Preguntas no aplicables": "int"})
     show_cols_table(out, height=600, kinds={k: v for k, v in kinds.items() if k in out.columns})
     if len(res) > 1000:
         st.caption("Muestro las 1.000 primeras; afina los filtros o descarga el CSV completo.")
@@ -168,6 +172,7 @@ def screener_page():
 def lote_page():
     st.markdown("<span class='subtle'>ANÁLISIS EN LOTE</span>", unsafe_allow_html=True)
     st.markdown("# Análisis completo en lote")
+    explica("lote")
     st.caption("Pasa tu modelo completo (examen financiero automático, proyección en 4 escenarios, test de cobertura y margen de seguridad) "
                "por una lista de empresas. Usa tus supuestos guardados si los hay; si no, las propuestas por fase. Cada empresa tarda ~1-2 s.")
     default = st.session_state.get("lote_tickers", "ADBE, MSFT, CPRT, V, MA")
@@ -267,6 +272,7 @@ def cartera_page():
     from terminal import cartera as C
     st.markdown("<span class='subtle'>CARTERA</span>", unsafe_allow_html=True)
     st.markdown("# Mi cartera")
+    explica("cartera")
     rows = _load_cartera()
     st.caption(f"Almacenamiento: {storage.backend()}"
                + ("" if storage.backend() == "github" else " · ⚠ sin token de GitHub, lo que guardes aquí se pierde cuando la app se reinicia."))

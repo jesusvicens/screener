@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import io
+from datetime import date
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from terminal import analysis as A, exam as E, financials as F, pipeline, riesgo as R, sec, storage
+from terminal import analysis as A, exam as E, financials as F, pipeline, plantilla, riesgo as R, sec, storage
+from ui.ayuda import explica
 from ui.common import (AMBER, BLUE, GREEN, MUTED, RED, fig_layout, fmt_cell, kv_table, mult, num, pct, show_cols_table,
                        show_rows_table)
 
@@ -71,6 +73,7 @@ def _widget_defaults(T: str, saved: dict, sugg: dict) -> dict:
             pts = sugg[qid][0]
         D[_key(T, qid)] = opts[pts - 1] if pts else (E.NA if pts == 0 else "—")
     D[_key(T, "tesis")] = saved.get("notas", "")
+    D[_key(T, "cual_motivos")] = saved.get("cualitativo_motivos") or {}
     D[_key(T, "seguimiento")] = saved.get("seguimiento", "")
     rk = saved.get("riesgo") or {}
     tp = {**R.DEFAULT_TEST_PROBS, **(rk.get("test_probs") or {})}
@@ -138,7 +141,7 @@ def _work_from_widgets(T: str) -> dict:
     return {"params": params, "precio_manual": bool(price), "supuestos": sup, "examen": ans,
             "fase": None if fase in (None, "(propuesta)") else fase,
             "notas": s.get(_key(T, "tesis"), ""), "seguimiento": s.get(_key(T, "seguimiento"), ""),
-            "riesgo": _risk_inputs(T)}
+            "riesgo": _risk_inputs(T), "cualitativo_motivos": s.get(_key(T, "cual_motivos"), {})}
 
 
 def _risk_inputs(T: str) -> dict:
@@ -251,14 +254,21 @@ def _save_bar(T, work, ca):
             st.toast(msg)
         except Exception as e:  # noqa: BLE001
             st.error(f"No se ha podido guardar: {e}")
-    c2.download_button("⬇ Excel", data=_excel(ca), file_name=f"{T}_analisis.xlsx", width="stretch",
-                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    try:
+        xls = plantilla.build_workbook(ca, work)
+        c2.download_button("⬇ Excel (mi plantilla)", data=xls, file_name=f"{T} - analisis financer {date.today().year}.xlsx", width="stretch",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           help="Tu plantilla de Excel con los datos de esta empresa, tus supuestos y el examen nuevo. Excel recalcula al abrir.")
+    except Exception as e:  # noqa: BLE001
+        c2.download_button("⬇ Excel (datos)", data=_excel(ca), file_name=f"{T}_analisis.xlsx", width="stretch",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", help=f"Plantilla no disponible: {e}")
     c3.markdown(f"<span class='subtle'>Guardado en: {storage.backend()} · último: {_saved(T).get('actualizado', 'nunca')}</span>",
                 unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------ pestañas
 def _tab_resumen(ca):
+    explica("resumen")
     f = ca.fin
     ys = [str(y) for y in f.years]
     c1, c2 = st.columns(2)
@@ -340,6 +350,7 @@ def _hist_series(ca, key):
 
 
 def _tab_historico(T, ca):
+    explica("historico")
     f = ca.fin
     names = [m[0] for m in HIST_METRICS]
     c1, c2 = st.columns([2, 5])
@@ -370,6 +381,7 @@ def _tab_historico(T, ca):
 
 
 def _tab_examen(T, ca):
+    explica("examen")
     sc = ca.score
     cols = st.columns(4)
     cols[0].metric("Nota final", f"{sc['final']:.2f}")
@@ -382,6 +394,24 @@ def _tab_examen(T, ca):
     if na_fin >= 6:
         st.warning(f"{na_fin} de 21 preguntas financieras están en «No aplica» (típico de bancos y aseguradoras): "
                    "la nota financiera se apoya en pocas métricas, úsala con cautela.")
+    with st.expander("🤖 Rellenar el bloque cualitativo con Claude (usa tu plan, no la API)", expanded=not sc["cual_respondidas"]):
+        st.markdown("1. Copia este texto (botón de copiar arriba a la derecha) y pégalo en un chat nuevo de Claude con la búsqueda web activada.\n"
+                    "2. Cuando conteste, copia toda su respuesta y pégala abajo.\n"
+                    "3. Pulsa **Rellenar**. Revisa cada respuesta: son una propuesta, la decisión es tuya.")
+        st.code(E.claude_prompt(ca.fin, ca.stats, st.session_state.get(_key(T, "tesis"), "")), language=None)
+        pasted = st.text_area("Respuesta de Claude", key=_key(T, "claude_paste"), height=140,
+                              placeholder="Pega aquí la respuesta completa (debe acabar con el bloque JSON)…")
+        if st.button("Rellenar el cualitativo", type="primary", disabled=not pasted):
+            answers, reasons, warns = E.parse_claude_answer(pasted)
+            for w in warns:
+                st.warning(w)
+            if answers:
+                for qid, pts in answers.items():
+                    st.session_state[_key(T, qid)] = E.Q[qid][3][pts - 1]
+                st.session_state[_key(T, "cual_motivos")] = {**st.session_state.get(_key(T, "cual_motivos"), {}), **reasons}
+                st.toast(f"{len(answers)} respuestas cualitativas rellenadas. Recuerda pulsar «Guardar análisis».")
+                st.rerun()
+    motivos = st.session_state.get(_key(T, "cual_motivos"), {}) or {}
     blocks = E.QUALITATIVE_BLOCKS + E.FINANCIAL_BLOCKS
     left, right = st.columns(2)
     for i, b in enumerate(blocks):
@@ -397,16 +427,17 @@ def _tab_examen(T, ca):
                 choices = ["—"] + opts + ([E.NA] if b in E.FINANCIAL_BLOCKS else [])
                 if st.session_state.get(_key(T, qid)) not in choices:
                     st.session_state[_key(T, qid)] = "—"
-                st.selectbox(text, choices, key=_key(T, qid))
+                st.selectbox(text, choices, key=_key(T, qid), help=E.HELP.get(qid))
+                if qid in motivos:
+                    st.markdown(f"<div class='why'>Claude: {motivos[qid]}</div>", unsafe_allow_html=True)
                 if qid in ca.suggestions:
                     pts, why = ca.suggestions[qid]
                     label = opts[pts - 1] if pts else E.NA
                     st.markdown(f"<div class='why'>Propuesta: {label} · {why}</div>", unsafe_allow_html=True)
-    with st.expander("Texto para trabajar el bloque cualitativo conmigo en el chat de Claude (usa tu plan, no la API)"):
-        st.code(E.claude_prompt(ca.fin, ca.stats, st.session_state.get(_key(T, "tesis"), "")), language=None)
 
 
 def _tab_estados(ca):
+    explica("estados")
     f = ca.fin
     ps_kinds = {F.LABELS[k]: "ps" for k in ("eps_basic", "eps_diluted")}
     m_kinds = {F.LABELS[k]: "m" for k in F.LABELS}
@@ -429,6 +460,7 @@ def _tab_estados(ca):
 
 
 def _tab_eps(ca):
+    explica("eps")
     st.markdown("## Modelo EPS · histórico")
     df = ca.eps_df.copy()
     show_cols_table(df)
@@ -456,6 +488,7 @@ def _tab_eps(ca):
 
 
 def _tab_roic(T, ca):
+    explica("roic")
     st.number_input("Vida útil del I+D capitalizado (años)", 1, 10, key=_key(T, "rdl"))
     st.markdown("## ROIC y capital invertido")
     st.caption("Capital invertido = deuda a largo plazo + patrimonio neto − caja e inversiones a corto. NOPAT = EBIT × (1 − tipo efectivo).")
@@ -466,6 +499,7 @@ def _tab_roic(T, ca):
 
 def _tab_escenarios(T, ca):
     st.markdown("## 1. Parámetros del inversor")
+    explica("esc_1")
     c = st.columns(7)
     c[0].number_input("Precio (vacío = mercado)", min_value=0.0, step=1.0, key=_key(T, "price"), placeholder=num(ca.params.price, 2))
     c[1].number_input("Rentabilidad exigida r (%)", 0.0, 50.0, step=0.5, key=_key(T, "r"))
@@ -488,6 +522,7 @@ def _tab_escenarios(T, ca):
         st.dataframe(pd.DataFrame(rows, columns=["", "Valor"]).set_index(""), width="stretch", height=600)
 
     st.markdown("## 3. Escenarios")
+    explica("esc_3")
     st.caption("Cada casilla vacía usa la propuesta según la fase (la ves en gris). Escribe encima para fijar tu supuesto; bórrala para volver a la propuesta. "
                "Porcentajes en %. Si dejas el PER vacío se recalcula con el crecimiento del año 10.")
     head = st.columns([2.2, 1, 1, 1, 1])
@@ -510,8 +545,10 @@ def _tab_escenarios(T, ca):
         st.info("Necesito un precio y un BPA para valorar.")
         return
     st.markdown("## 4. Valor futuro por escenario")
+    explica("esc_4")
     show_rows_table(v.by_scenario)
     st.markdown("## 5. Test de cobertura · 6. Valor estimado y margen de seguridad")
+    explica("esc_56")
     c1, c2 = st.columns(2)
     with c1:
         kv_table(v.coverage)
@@ -527,10 +564,12 @@ def _tab_escenarios(T, ca):
     st.plotly_chart(fig_layout(fig, f"Valor futuro en el año {ca.params.n} frente al umbral", 340), width="stretch")
 
     st.markdown("## 7. Ventana de horizontes (escenario base)")
+    explica("esc_7")
     show_rows_table(v.window, kinds={"Caja acumulada por acción C(n)": "ps", "Dividendos capitalizados D(n)": "ps"})
     st.caption("Múltiplo requerido = (P·(1+r)^n − D(n) − C(n)) / B(n). La ventana son los años en que no supera la referencia.")
 
     st.markdown("## 8. Test de exposición (opcional)")
+    explica("esc_8")
     c = st.columns(3)
     c[0].number_input("Patrimonio líquido", min_value=0.0, step=1000.0, key=_key(T, "patr"))
     c[1].number_input("Importe invertido en la posición", min_value=0.0, step=1000.0, key=_key(T, "imp"))
@@ -549,6 +588,7 @@ def _tab_escenarios(T, ca):
 
 
 def _tab_riesgo(T, ca):
+    explica("riesgo")
     v = ca.val
     if not v:
         st.info("Necesito un precio y un BPA para el análisis de riesgo.")
@@ -639,6 +679,7 @@ def _tab_riesgo(T, ca):
 
 
 def _tab_filings(ca):
+    explica("filings")
     try:
         fl = _filings(ca.fin.cik)
     except Exception as e:  # noqa: BLE001

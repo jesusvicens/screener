@@ -28,6 +28,12 @@ REVENUE_TAGS = ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax
 # ---------------------------------------------------------------- catálogo de métricas
 # (columna, grupo, formato, explicación). formato: pct, x (múltiplo), m (millones), ps (por acción), int
 METRICS: list[tuple[str, str, str, str]] = [
+    ("Nota financiera", "Examen", "ps", "Nota del examen financiero (0-10): media de PyG, Balance, Cash Flow y Asignación de capital. Se recalcula cada semana"),
+    ("Nota PyG", "Examen", "ps", "Bloque PyG del examen financiero (0-10)"),
+    ("Nota Balance", "Examen", "ps", "Bloque Balance del examen financiero (0-10)"),
+    ("Nota Cash Flow", "Examen", "ps", "Bloque Cash Flow del examen financiero (0-10)"),
+    ("Nota Asignación de capital", "Examen", "ps", "Bloque Asignación de capital del examen financiero (0-10)"),
+    ("Preguntas no aplicables", "Examen", "int", "Preguntas del examen en «No aplica» (de 21). Muchas = banco/aseguradora o pocos datos: nota menos fiable"),
     ("Capitalización (M$)", "Tamaño", "m", "Precio × acciones diluidas del último ejercicio"),
     ("Valor empresa (M$)", "Tamaño", "m", "Capitalización + deuda financiera − caja"),
     ("Ventas (M$)", "Tamaño", "m", "Ventas del último ejercicio"),
@@ -83,6 +89,7 @@ VALUATION = [m for m, g, _k, _d in METRICS if g == "Valoración" or m in ("Capit
 
 # Filtros guardados de ejemplo: {métrica: (mín, máx)} en unidades «humanas» (porcentajes como 0.10 = 10 %).
 PRESETS: dict[str, dict[str, tuple[float | None, float | None]]] = {
+    "Mejores notas financieras": {"Nota financiera": (8.0, None), "Preguntas no aplicables": (None, 3), "Ventas (M$)": (300, None)},
     "Fisher / Munger: calidad que crece": {
         "Ventas (M$)": (500, None), "CAGR ventas 5a": (0.07, None), "CAGR BPA 5a": (0.08, None), "Años caída BPA": (None, 1),
         "ROE medio 5a": (0.15, None), "Margen operativo": (0.15, None), "FCF / beneficio": (0.8, None), "Deuda / patrimonio": (None, 1.0)},
@@ -314,6 +321,27 @@ def with_valuation(base: pd.DataFrame, mk: pd.DataFrame | None) -> pd.DataFrame:
     df["Rent. FCF"] = df["_fcf"] / mcap
     df["Rent. dividendo"] = df["_div"].fillna(0) / mcap
     return df
+
+
+NOTAS_FILE = Path(__file__).resolve().parent.parent / "data" / "notas_financieras.csv.gz"
+NOTA_COLS = ["Nota financiera", "Nota PyG", "Nota Balance", "Nota Cash Flow", "Nota Asignación de capital", "Preguntas no aplicables"]
+
+
+def with_notas(df: pd.DataFrame) -> pd.DataFrame:
+    """Añade las notas del examen financiero calculadas para todo el universo (GitHub Action semanal)."""
+    if not NOTAS_FILE.exists():
+        for c in NOTA_COLS:
+            df[c] = None
+        return df
+    n = pd.read_csv(NOTAS_FILE, usecols=lambda c: c in NOTA_COLS + ["Ticker", "CIK"])
+    n = n.drop_duplicates("CIK").set_index("CIK")
+    for c in NOTA_COLS:
+        df[c] = df["CIK"].map(n[c]) if c in n else None
+    return df
+
+
+def notas_age_days() -> float | None:
+    return (time.time() - NOTAS_FILE.stat().st_mtime) / 86400 if NOTAS_FILE.exists() else None
 
 
 def apply_filters(df: pd.DataFrame, filters: dict[str, tuple], exchanges: list[str] | None = None, text: str = "",
