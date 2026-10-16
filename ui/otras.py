@@ -29,10 +29,11 @@ def _from_ui(m, v):
 
 
 def _apply_preset(filters: dict):
-    st.session_state["scr_metrics"] = list(filters)
+    sp = st.session_state.setdefault("_scr_persist", {})
+    st.session_state["scr_metrics"] = sp["scr_metrics"] = list(filters)
     for m, (lo, hi) in filters.items():
-        st.session_state[f"scr_lo_{m}"] = _to_ui(m, lo)
-        st.session_state[f"scr_hi_{m}"] = _to_ui(m, hi)
+        st.session_state[f"scr_lo_{m}"] = sp[f"scr_lo_{m}"] = _to_ui(m, lo)
+        st.session_state[f"scr_hi_{m}"] = sp[f"scr_hi_{m}"] = _to_ui(m, hi)
 
 
 def _user_presets() -> dict:
@@ -74,10 +75,16 @@ def screener_page():
     c[0].caption(f"{len(df):,} empresas · fundamentales del ejercicio {Y} (SEC, hace {(time.time() - base_stamp) / 86400:.1f} días) · "
                  f"precios hace {mk_age or 0:.0f} h · {df['Precio'].notna().sum():,} con cotización")
 
-    st.session_state.setdefault("scr_metrics", list(screener.PRESETS["Fisher / Munger: calidad que crece"]))
-    if "scr_init" not in st.session_state:
-        _apply_preset(screener.PRESETS["Fisher / Munger: calidad que crece"])
-        st.session_state["scr_init"] = True
+    # Streamlit borra el estado de los controles al cambiar de página: lo restauramos desde una copia.
+    sp = st.session_state.setdefault("_scr_persist", {})
+    if not sp:
+        default = screener.PRESETS["Fisher / Munger: calidad que crece"]
+        sp["scr_metrics"] = list(default)
+        for m, (lo, hi) in default.items():
+            sp[f"scr_lo_{m}"], sp[f"scr_hi_{m}"] = _to_ui(m, lo), _to_ui(m, hi)
+    for k, v in sp.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
     with st.container(border=True):
         st.markdown("## Filtros")
@@ -119,6 +126,9 @@ def screener_page():
             except Exception as e:  # noqa: BLE001
                 st.error(f"No se ha podido guardar: {e}")
 
+    sp["scr_metrics"] = list(st.session_state["scr_metrics"])
+    for m in mets:
+        sp[f"scr_lo_{m}"], sp[f"scr_hi_{m}"] = st.session_state.get(f"scr_lo_{m}"), st.session_state.get(f"scr_hi_{m}")
     res = screener.apply_filters(df, filters, exch, text, sectors, industries)
     st.markdown(f"## Resultado · {len(res):,} empresas")
     core = ["Empresa", "Sector", "Precio", "Capitalización (M$)", "PER"]

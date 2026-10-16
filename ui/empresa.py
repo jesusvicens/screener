@@ -44,47 +44,73 @@ def _key(T, *parts):
     return "_".join([T, *map(str, parts)])
 
 
-def _init_widgets(T: str, saved: dict, sugg: dict):
-    if st.session_state.get(_key(T, "init")):
-        return
+def _widget_defaults(T: str, saved: dict, sugg: dict) -> dict:
+    """Valor inicial de cada control de la ficha (de lo guardado o, si no hay, de las propuestas)."""
+    D = {}
     p = A.params_from_dict(saved.get("params"))
-    st.session_state[_key(T, "price")] = p.price if saved.get("precio_manual") else None
-    st.session_state[_key(T, "r")] = p.r * 100
-    st.session_state[_key(T, "n")] = int(p.n)
-    st.session_state[_key(T, "mos")] = p.mos * 100
-    st.session_state[_key(T, "glt")] = p.g_lt * 100
-    st.session_state[_key(T, "ytm")] = int(p.years_to_margin)
-    st.session_state[_key(T, "rdl")] = int(p.rd_life)
-    st.session_state[_key(T, "accm")] = p.acciones_manual
-    st.session_state[_key(T, "patr")] = p.patrimonio
-    st.session_state[_key(T, "imp")] = p.importe
-    st.session_state[_key(T, "deu")] = p.deuda_posicion
-    st.session_state[_key(T, "fase")] = saved.get("fase") or "(propuesta)"
+    D[_key(T, "price")] = p.price if saved.get("precio_manual") else None
+    D[_key(T, "r")] = p.r * 100
+    D[_key(T, "n")] = int(p.n)
+    D[_key(T, "mos")] = p.mos * 100
+    D[_key(T, "glt")] = p.g_lt * 100
+    D[_key(T, "ytm")] = int(p.years_to_margin)
+    D[_key(T, "rdl")] = int(p.rd_life)
+    D[_key(T, "accm")] = p.acciones_manual
+    D[_key(T, "patr")] = p.patrimonio
+    D[_key(T, "imp")] = p.importe
+    D[_key(T, "deu")] = p.deuda_posicion
+    D[_key(T, "fase")] = saved.get("fase") or "(propuesta)"
     for scn in A.SCENARIOS:
         for fld, _lbl, kind in A.SCENARIO_FIELDS:
             v = (saved.get("supuestos") or {}).get(scn, {}).get(fld)
-            st.session_state[_key(T, "sc", scn, fld)] = (v * 100 if kind == "pct" else v) if v is not None else None
+            D[_key(T, "sc", scn, fld)] = (v * 100 if kind == "pct" else v) if v is not None else None
     answers = saved.get("examen") or {}
-    for qid, block, _t, opts in E.QUESTIONS:
+    for qid, _block, _t, opts in E.QUESTIONS:
         pts = answers.get(qid)
         if pts is None and qid in sugg:
             pts = sugg[qid][0]
-        st.session_state[_key(T, qid)] = opts[pts - 1] if pts else "—"
-    st.session_state[_key(T, "tesis")] = saved.get("notas", "")
-    st.session_state[_key(T, "seguimiento")] = saved.get("seguimiento", "")
+        D[_key(T, qid)] = opts[pts - 1] if pts else "—"
+    D[_key(T, "tesis")] = saved.get("notas", "")
+    D[_key(T, "seguimiento")] = saved.get("seguimiento", "")
     rk = saved.get("riesgo") or {}
     tp = {**R.DEFAULT_TEST_PROBS, **(rk.get("test_probs") or {})}
     for scn in A.SCENARIOS:
-        st.session_state[_key(T, "tp", scn)] = tp[scn] * 100
+        D[_key(T, "tp", scn)] = tp[scn] * 100
     prices_ = rk.get("test_prices") or R.DEFAULT_TEST_PRICES
     for i in range(3):
-        st.session_state[_key(T, "tpx", i)] = prices_[i] if i < len(prices_) else None
-    st.session_state[_key(T, "drop")] = (rk.get("drop", R.DEFAULT_DROP)) * 100
-    st.session_state[_key(T, "ming")] = (rk.get("min_guarantee", R.DEFAULT_MIN_GUARANTEE)) * 100
-    st.session_state[_key(T, "perfiles")] = rk.get("profiles") or [dict(x) for x in R.DEFAULT_PROFILES]
+        D[_key(T, "tpx", i)] = prices_[i] if i < len(prices_) else None
+    D[_key(T, "drop")] = (rk.get("drop", R.DEFAULT_DROP)) * 100
+    D[_key(T, "ming")] = (rk.get("min_guarantee", R.DEFAULT_MIN_GUARANTEE)) * 100
+    D[_key(T, "perfiles")] = rk.get("profiles") or [dict(x) for x in R.DEFAULT_PROFILES]
+    surv = rk.get("supervivencia") or []
     for i, _q in enumerate(R.SURVIVAL_QUESTIONS):
-        st.session_state[_key(T, "surv", i)] = (rk.get("supervivencia") or [""] * 5)[i] if i < len(rk.get("supervivencia") or []) else ""
-    st.session_state[_key(T, "init")] = True
+        D[_key(T, "surv", i)] = surv[i] if i < len(surv) else ""
+    return D
+
+
+def _init_widgets(T: str, saved: dict, sugg: dict):
+    """Streamlit borra el estado de los controles cuando cambias de página. Guardamos una copia aparte
+    (_persist) y, si falta algún control, lo restauramos desde ahí o desde lo guardado."""
+    persist = st.session_state.setdefault("_persist", {})
+    D = _widget_defaults(T, saved, sugg)
+    st.session_state[f"_keys_{T}"] = list(D)
+    for k, v in D.items():
+        if k not in st.session_state:
+            st.session_state[k] = persist.get(k, v)
+
+
+def _persist_widgets(T: str):
+    persist = st.session_state.setdefault("_persist", {})
+    for k in st.session_state.get(f"_keys_{T}", []):
+        if k in st.session_state:
+            persist[k] = st.session_state[k]
+
+
+def _reset_widgets(T: str):
+    persist = st.session_state.setdefault("_persist", {})
+    for k in st.session_state.get(f"_keys_{T}", []):
+        persist.pop(k, None)
+        st.session_state.pop(k, None)
 
 
 def _work_from_widgets(T: str) -> dict:
@@ -149,6 +175,7 @@ def page():
     sugg0 = E.suggestions(fin, stats0)
     _init_widgets(T, saved, sugg0)
     work = _work_from_widgets(T)
+    _persist_widgets(T)
     ca = pipeline.analyze(meta, fin, hist, saved=work, auto_financial_answers=False)
     if not ca.params.price:
         st.warning("No he podido obtener la cotización. Escribe el precio a mano en «Escenarios y valoración» para valorar.")
@@ -208,7 +235,11 @@ def _header(ca: pipeline.CompanyAnalysis):
 
 
 def _save_bar(T, work, ca):
-    c1, c2, c3 = st.columns([1, 1, 4])
+    c1, c2, c4, c3 = st.columns([1, 1, 1, 3])
+    if c4.button("↺ Volver a lo guardado", width="stretch", help="Descarta los cambios sin guardar de esta empresa."):
+        _reset_widgets(T)
+        st.session_state.pop(f"saved_{T}", None)
+        st.rerun()
     if c1.button("💾 Guardar análisis", type="primary", width="stretch"):
         data = dict(work)
         data["resumen"] = {k: (float(v) if isinstance(v, (int, float)) else v) for k, v in pipeline.summary_row(ca).items()}
