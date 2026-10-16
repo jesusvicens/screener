@@ -44,6 +44,10 @@ METRICS: list[tuple[str, str, str, str]] = [
     ("Crec. BPA 1a", "Crecimiento", "pct", "BPA diluido último año / año anterior − 1 (ajustado por splits)"),
     ("CAGR BPA 3a", "Crecimiento", "pct", "Crecimiento anual compuesto del BPA, 3 años"),
     ("CAGR BPA 5a", "Crecimiento", "pct", "Crecimiento anual compuesto del BPA, 5 años"),
+    ("Crec. medio ventas", "Crecimiento", "pct", "Media de los crecimientos anuales de las ventas en los últimos N años (eliges N junto al filtro, de 2 a 10)"),
+    ("Crec. medio BPA", "Crecimiento", "pct", "Media de los crecimientos anuales del BPA en los últimos N años (eliges N junto al filtro, de 2 a 10). Exige BPA positivo como base cada año"),
+    ("Crec. medio beneficio", "Crecimiento", "pct", "Media de los crecimientos anuales del beneficio neto en los últimos N años (N a elegir)"),
+    ("Crec. medio FCF", "Crecimiento", "pct", "Media de los crecimientos anuales del flujo de caja libre en los últimos N años (N a elegir)"),
     ("CAGR beneficio 5a", "Crecimiento", "pct", "Crecimiento anual compuesto del beneficio neto, 5 años"),
     ("CAGR flujo operativo 5a", "Crecimiento", "pct", "Crecimiento anual compuesto del flujo de caja operativo, 5 años"),
     ("CAGR FCF 5a", "Crecimiento", "pct", "Crecimiento anual compuesto del flujo de caja libre, 5 años"),
@@ -126,7 +130,7 @@ def _d(a, b):
     return a / b if (a is not None and b not in (None, 0)) else None
 
 
-def build_base(progress=None, years_back: int = 5) -> pd.DataFrame:
+def build_base(progress=None, years_back: int = 10) -> pd.DataFrame:
     """Fundamentales de todas las empresas (sin precios). ~1-2 min la primera vez; luego, caché semanal."""
     Y = latest_year()
     yrs = list(range(Y - years_back, Y + 1))
@@ -210,17 +214,18 @@ def build_base(progress=None, years_back: int = 5) -> pd.DataFrame:
 
         rows.append({
             "Ticker": u["ticker"], "Empresa": u["name"], "Mercado": u["exchange"], "CIK": cik, "Año datos": Y,
+            "_s_rev": rev, "_s_eps": eps, "_s_ni": ni, "_s_fcf": fcf,
             "BPA": eps[-1], "Acciones (M)": sh[-1] / 1e6 if sh[-1] else None,
             "_debt": debt, "_cash": cash, "_eq": EQ, "_fcf": fcf[-1], "_op": OP, "_ebitda": ebitda, "_div": L["div"], "_rev": R, "_ni": NI,
             "Ventas (M$)": R / 1e6 if R else None, "Beneficio (M$)": NI / 1e6 if NI is not None else None,
             "Crec. ventas 1a": (_d(R, rev[-2]) - 1) if (R and rev[-2]) else None,
-            "CAGR ventas 3a": _cagr(R, rev[-4], 3), "CAGR ventas 5a": _cagr(R, rev[0], years_back),
+            "CAGR ventas 3a": _cagr(R, rev[-4], 3), "CAGR ventas 5a": _cagr(R, rev[-6], 5),
             "Crec. BPA 1a": (_d(eps[-1], eps[-2]) - 1) if (eps[-1] is not None and eps[-2] and eps[-2] > 0) else None,
-            "CAGR BPA 3a": _cagr(eps[-1], eps[-4], 3), "CAGR BPA 5a": _cagr(eps[-1], eps[0], years_back),
-            "CAGR beneficio 5a": _cagr(NI, ni[0], years_back), "CAGR flujo operativo 5a": _cagr(g["ocf"][-1], g["ocf"][0], years_back),
-            "CAGR FCF 5a": _cagr(fcf[-1], fcf[0], years_back), "CAGR patrimonio 5a": _cagr(EQ, eq[0], years_back),
-            "Años caída ventas": downs(rev), "Años caída BPA": downs(eps),
-            "Años con pérdidas": sum(1 for x in ni if x is not None and x < 0) if any(x is not None for x in ni) else None,
+            "CAGR BPA 3a": _cagr(eps[-1], eps[-4], 3), "CAGR BPA 5a": _cagr(eps[-1], eps[-6], 5),
+            "CAGR beneficio 5a": _cagr(NI, ni[-6], 5), "CAGR flujo operativo 5a": _cagr(g["ocf"][-1], g["ocf"][-6], 5),
+            "CAGR FCF 5a": _cagr(fcf[-1], fcf[-6], 5), "CAGR patrimonio 5a": _cagr(EQ, eq[-6], 5),
+            "Años caída ventas": downs(rev[-6:]), "Años caída BPA": downs(eps[-6:]),
+            "Años con pérdidas": sum(1 for x in ni[-6:] if x is not None and x < 0) if any(x is not None for x in ni[-6:]) else None,
             "Margen bruto": _d(L["gp"], R) if L["gp"] is not None else (_d(R - L["cogs"], R) if (R and L["cogs"] is not None) else None), "Margen operativo": _d(OP, R), "Margen neto": _d(NI, R), "Margen FCF": _d(fcf[-1], R),
             "I+D / ventas": _d(L["rnd"], R), "SBC / ventas": _d(L["sbc"], R),
             "ROE": _d(NI, EQ) if EQ and EQ > 0 else None, "ROE medio 5a": sum(roes) / len(roes) if len(roes) >= 3 else None,
@@ -229,7 +234,7 @@ def build_base(progress=None, years_back: int = 5) -> pd.DataFrame:
             "Deuda neta / EBITDA": _d(debt - cash, ebitda) if ebitda and ebitda > 0 else None,
             "Liquidez corriente": _d(L["ac"], L["lc"]),
             "Años para repagar deuda con OCF": _d(debt, g["ocf"][-1]) if g["ocf"][-1] and g["ocf"][-1] > 0 else None,
-            "Var. acciones 5a": _cagr(sh[-1], sh[0], years_back),
+            "Var. acciones 5a": _cagr(sh[-1], sh[-6], 5),
             "Payout": _d(L["div"] or 0, NI) if NI and NI > 0 else None,
             "Recompras / FCF": _d(L["bb"] or 0, fcf[-1]) if fcf[-1] and fcf[-1] > 0 else None,
             "FCF / beneficio": _d(fcf[-1], NI) if NI and NI > 0 else None,
@@ -240,8 +245,49 @@ def build_base(progress=None, years_back: int = 5) -> pd.DataFrame:
 
 def load_base(max_age_days: float = 7) -> pd.DataFrame | None:
     if BASE_FILE.exists() and (time.time() - BASE_FILE.stat().st_mtime) < max_age_days * 86400:
-        return pd.read_pickle(BASE_FILE)
+        df = pd.read_pickle(BASE_FILE)
+        if "_s_eps" in df.columns:  # versiones antiguas sin series anuales: se reconstruye
+            return df
     return None
+
+
+# ---------------------------------------------------------------- crecimiento medio con N años a elegir
+AVG_GROWTH = {"Crec. medio ventas": "_s_rev", "Crec. medio BPA": "_s_eps", "Crec. medio beneficio": "_s_ni", "Crec. medio FCF": "_s_fcf"}
+AVG_YEARS = list(range(2, 11))
+AVG_DEFAULT = 5
+
+
+def avg_growth(series, n: int):
+    """Media aritmética de los últimos n crecimientos anuales.
+
+    El primer y el último año tienen que tener dato. Si falta algún año intermedio (la SEC no lo
+    da para ese año natural), el tramo se reparte como crecimiento anual compuesto entre los dos
+    datos que lo rodean. Si la base de un año es cero o negativa (pérdidas), no hay crecimiento
+    que medir y la empresa queda fuera.
+    """
+    if series is None or len(series) < n + 1:
+        return None
+    s = [None if (x is None or pd.isna(x)) else float(x) for x in list(series)[-(n + 1):]]
+    if s[0] is None or s[-1] is None:
+        return None
+    pts = [(i, x) for i, x in enumerate(s) if x is not None]
+    g = []
+    for (i, a), (j, b) in zip(pts, pts[1:]):
+        k = j - i
+        if a <= 0 or (k > 1 and b <= 0):
+            return None
+        g += [(b / a) ** (1 / k) - 1] * k
+    return sum(g) / len(g)
+
+
+def with_avg_growth(df: pd.DataFrame, years: dict[str, int] | None = None) -> pd.DataFrame:
+    """Calcula las columnas «Crec. medio …» con los años elegidos para cada una (5 por defecto)."""
+    years = years or {}
+    df = df.copy()
+    for m, col in AVG_GROWTH.items():
+        n = int(years.get(m, AVG_DEFAULT))
+        df[m] = df[col].map(lambda s, n=n: avg_growth(s, n)) if col in df else None
+    return df
 
 
 def save_base(df: pd.DataFrame):
@@ -370,7 +416,7 @@ def apply_filters(df: pd.DataFrame, filters: dict[str, tuple], exchanges: list[s
 
 
 # compatibilidad con el lote / página antigua
-def build_universe_metrics(progress=None, years_back: int = 5) -> pd.DataFrame:
+def build_universe_metrics(progress=None, years_back: int = 10) -> pd.DataFrame:
     return build_base(progress, years_back)
 
 

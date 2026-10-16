@@ -113,6 +113,7 @@ Para cada año calcula el **PER de salida requerido** para ganar r. Si es menor 
 
 - Añade métricas en «Métricas por las que filtrar» y pon mínimo y/o máximo (los porcentajes, en %). Deja vacío para no limitar.
 - **Plantillas:** filtros ya hechos; guarda los tuyos con un nombre.
+- **Crecimiento medio (ventas, BPA, beneficio, FCF):** la media de los crecimientos de cada año; al lado del filtro eliges cuántos años (de 2 a 10). Si algún año la base es negativa o falta el dato, la empresa queda fuera. Compáralo con el CAGR: si se parecen, el crecimiento ha sido regular; si no, hay años raros.
 - **Nota financiera:** el examen financiero completo calculado cada semana para todas las empresas. Combínalo con «Preguntas no aplicables ≤ 3» para descartar bancos y empresas con pocos datos.
 - Los datos salen de la SEC (ejercicio que mejor encaja con el año natural) y los precios, capitalización y sector, del screener público de Nasdaq. Es un **primer filtro**: el análisis está en la ficha.
 """,

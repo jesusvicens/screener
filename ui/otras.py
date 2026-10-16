@@ -34,9 +34,13 @@ def _from_ui(m, v):
 def _apply_preset(filters: dict):
     sp = st.session_state.setdefault("_scr_persist", {})
     st.session_state["scr_metrics"] = sp["scr_metrics"] = list(filters)
-    for m, (lo, hi) in filters.items():
+    for m, v in filters.items():
+        lo, hi = v[0], v[1]
         st.session_state[f"scr_lo_{m}"] = sp[f"scr_lo_{m}"] = _to_ui(m, lo)
         st.session_state[f"scr_hi_{m}"] = sp[f"scr_hi_{m}"] = _to_ui(m, hi)
+        if m in screener.AVG_GROWTH:
+            n = int(v[2]) if len(v) > 2 and v[2] else screener.AVG_DEFAULT
+            st.session_state[f"scr_n_{m}"] = sp[f"scr_n_{m}"] = n
 
 
 def _user_presets() -> dict:
@@ -63,7 +67,7 @@ def screener_page():
     c = st.columns([3, 1, 1])
     upd_base = c[1].button("↻ Fundamentales (≈1-2 min)", width="stretch", help="Descarga de la SEC. Se refresca sola cada semana.")
     upd_mk = c[2].button("↻ Precios y sectores", width="stretch", help="Una sola llamada al screener público de Nasdaq.")
-    if base is None or upd_base:
+    if base is None or upd_base:  # (también si la caché es de una versión sin series anuales)
         bar = st.progress(0.0, "Descargando de la SEC…")
         base = screener.build_base(progress=lambda p, m: bar.progress(p, m))
         screener.save_base(base)
@@ -107,6 +111,7 @@ def screener_page():
         st.multiselect("Métricas por las que filtrar (añade o quita)", [m for m, *_ in screener.METRICS], key="scr_metrics",
                        format_func=lambda m: labels[m])
         filters = {}
+        navg: dict[str, int] = {}
         mets = st.session_state["scr_metrics"]
         for i in range(0, len(mets), 3):
             cols = st.columns(3)
@@ -114,17 +119,22 @@ def screener_page():
                 with cols[j]:
                     unit = " (%)" if screener.METRIC_KIND[m] == "pct" else ""
                     st.markdown(f"<div class='subtle' style='margin-bottom:.1rem'>{m}{unit}</div>", unsafe_allow_html=True)
-                    a1, a2 = st.columns(2)
+                    is_avg = m in screener.AVG_GROWTH
+                    a1, a2, *a3 = st.columns([1, 1, 0.9]) if is_avg else st.columns(2)
                     st.session_state.setdefault(f"scr_lo_{m}", None)
                     st.session_state.setdefault(f"scr_hi_{m}", None)
                     lo = a1.number_input("mín", key=f"scr_lo_{m}", placeholder="mín", label_visibility="collapsed", help=screener.METRIC_HELP[m])
                     hi = a2.number_input("máx", key=f"scr_hi_{m}", placeholder="máx", label_visibility="collapsed")
+                    if is_avg:
+                        st.session_state.setdefault(f"scr_n_{m}", screener.AVG_DEFAULT)
+                        navg[m] = a3[0].selectbox("años", screener.AVG_YEARS, key=f"scr_n_{m}", format_func=lambda n: f"{n} años",
+                                                  label_visibility="collapsed", help="Número de años de la media")
                     filters[m] = (_from_ui(m, lo), _from_ui(m, hi))
         sv = st.columns([2, 1, 3])
         name = sv[0].text_input("Guardar estos filtros como…", placeholder="Nombre de la plantilla", label_visibility="collapsed")
         if sv[1].button("Guardar plantilla", width="stretch") and name:
             up = _user_presets()
-            up[name] = {m: list(v) for m, v in filters.items()}
+            up[name] = {m: list(v) + ([navg[m]] if m in navg else []) for m, v in filters.items()}
             try:
                 storage.save("_FILTROS", {"filtros": up})
                 st.toast(f"Plantilla «{name}» guardada")
@@ -134,6 +144,9 @@ def screener_page():
     sp["scr_metrics"] = list(st.session_state["scr_metrics"])
     for m in mets:
         sp[f"scr_lo_{m}"], sp[f"scr_hi_{m}"] = st.session_state.get(f"scr_lo_{m}"), st.session_state.get(f"scr_hi_{m}")
+        if m in navg:
+            sp[f"scr_n_{m}"] = navg[m]
+    df = screener.with_avg_growth(df, navg)
     res = screener.apply_filters(df, filters, exch, text, sectors, industries)
     st.markdown(f"## Resultado · {len(res):,} empresas")
     core = ["Empresa", "Sector", "Precio", "Capitalización (M$)", "PER", "Nota financiera"]
@@ -144,11 +157,15 @@ def screener_page():
     allcols = ["Empresa", "Mercado", "Sector", "Industria", "País", "BPA"] + [m for m, *_ in screener.METRICS]
     oc = st.columns([3, 1.3, 0.8])
     cols = oc[0].multiselect("Columnas", allcols, default=default_cols, key="scr_cols")
+    cols = cols + [m for m in mets if m not in cols]  # las métricas por las que filtras siempre se ven
     sort_opts = [c for c in cols if c not in ("Empresa", "Mercado", "Sector", "Industria", "País")] or ["Ventas (M$)"]
     sort_by = oc[1].selectbox("Ordenar por", sort_opts, index=sort_opts.index("CAGR BPA 5a") if "CAGR BPA 5a" in sort_opts else 0)
     asc = oc[2].toggle("Ascendente", False)
     out = res.sort_values(sort_by, ascending=asc, na_position="last")[["Ticker"] + cols].head(1000).set_index("Ticker")
+    ren = {m: f"{m} {navg.get(m, screener.AVG_DEFAULT)}a" for m in screener.AVG_GROWTH if m in out.columns}
+    out = out.rename(columns=ren)
     kinds = {m: k for m, k in screener.METRIC_KIND.items()}
+    kinds.update({v: "pct" for v in ren.values()})
     kinds.update({"BPA": "ps", "Precio": "ps", "Años caída ventas": "int", "Años caída BPA": "int", "Años con pérdidas": "int",
                   "Preguntas no aplicables": "int"})
     show_cols_table(out, height=600, kinds={k: v for k, v in kinds.items() if k in out.columns})
