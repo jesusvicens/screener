@@ -128,7 +128,8 @@ def _work_from_widgets(T: str) -> dict:
     for scn in A.SCENARIOS:
         for fld, _lbl, kind in A.SCENARIO_FIELDS:
             v = s.get(_key(T, "sc", scn, fld))
-            if v is not None:
+            lp = s.get(_key(T, "scp", scn, fld))  # última propuesta mostrada en la casilla
+            if v is not None and (lp is None or abs(v - lp) > 1e-6):
                 sup.setdefault(scn, {})[fld] = v / 100 if kind == "pct" else v
     ans = {}
     for qid, _b, _t, opts in E.QUESTIONS:
@@ -523,20 +524,67 @@ def _tab_escenarios(T, ca):
 
     st.markdown("## 3. Escenarios")
     explica("esc_3")
-    st.caption("Cada casilla vacía usa la propuesta según la fase (la ves en gris). Escribe encima para fijar tu supuesto; bórrala para volver a la propuesta. "
-               "Porcentajes en %. Si dejas el PER vacío se recalcula con el crecimiento del año 10.")
+    st.caption("Cada casilla trae la propuesta según la fase (tu Excel). Escribe encima para fijar tu supuesto; si no la tocas, sigue a la propuesta "
+               "cuando cambies la fase, r o el crecimiento del año 10. Porcentajes en %.")
+    if st.button("↺ Volver a las propuestas en todos los escenarios", key=_key(T, "sc_reset")):
+        for scn in A.SCENARIOS:
+            for fld, _l, _k in A.SCENARIO_FIELDS:
+                st.session_state[_key(T, "sc", scn, fld)] = None
+                st.session_state.pop(_key(T, "scp", scn, fld), None)
+        st.rerun()
+    # Sincroniza las casillas que no has tocado con la propuesta actual
+    props = {}
+    for scn in A.SCENARIOS:
+        for fld, _lbl, kind in A.SCENARIO_FIELDS:
+            prop = ca.proposed[scn][fld] if fld != "per_exit" else A.exit_per(ca.scenarios[scn]["g10"], ca.params.r, ca.stats.get("roe5"))
+            p_ui = prop * 100 if kind == "pct" else prop
+            props[(scn, fld)] = p_ui
+            k, kp = _key(T, "sc", scn, fld), _key(T, "scp", scn, fld)
+            cur, lp = st.session_state.get(k), st.session_state.get(kp)
+            if cur is None or (lp is not None and abs(cur - lp) <= 1e-6):
+                st.session_state[k] = p_ui
+                st.session_state[kp] = p_ui
+            elif lp is None:
+                st.session_state[kp] = p_ui
     head = st.columns([2.2, 1, 1, 1, 1])
     head[0].markdown("<span class='subtle'>Supuesto</span>", unsafe_allow_html=True)
     for i, scn in enumerate(A.SCENARIOS):
         head[i + 1].markdown(f"**{scn}**")
+    mine = []
     for fld, lbl, kind in A.SCENARIO_FIELDS:
         row = st.columns([2.2, 1, 1, 1, 1])
         row[0].markdown(f"<div style='padding-top:.45rem'>{lbl}</div>", unsafe_allow_html=True)
         for i, scn in enumerate(A.SCENARIOS):
-            prop = ca.proposed[scn][fld] if fld != "per_exit" else A.exit_per(ca.scenarios[scn]["g10"], ca.params.r, ca.stats.get("roe5"))
-            ph = f"{prop * 100:.2f}" if kind == "pct" else f"{prop:.2f}"
-            row[i + 1].number_input(lbl, step=0.5 if kind == "pct" else 0.5, format="%.2f", key=_key(T, "sc", scn, fld),
-                                    placeholder=ph, label_visibility="collapsed")
+            row[i + 1].number_input(lbl, step=0.5, format="%.2f", key=_key(T, "sc", scn, fld), label_visibility="collapsed")
+            cur = st.session_state.get(_key(T, "sc", scn, fld))
+            if cur is not None and abs(cur - props[(scn, fld)]) > 1e-6:
+                mine.append(f"{scn} · {lbl}: **{cur:.2f}** (propuesta {props[(scn, fld)]:.2f})")
+    if mine:
+        st.markdown("<span class='pill am'>Tus supuestos</span> " + " · ".join(mine), unsafe_allow_html=True)
+    with st.expander("¿De dónde sale el PER de salida?"):
+        r_ = ca.params.r
+        roe5 = ca.stats.get("roe5") or 0.0
+        rows = []
+        for scn in A.SCENARIOS:
+            g10 = ca.scenarios[scn]["g10"]
+            g = min(g10, r_ - 0.03)
+            roe = max(roe5, r_ + 0.01)
+            just = A.exit_per(g10, r_, ca.stats.get("roe5"))
+            rows.append({"Escenario": scn, "Crecimiento año 10": f"{g10:.1%}", "g usado = mín(g10, r − 3 pp)": f"{g:.1%}",
+                         "ROE usado = máx(ROE 5 años, r + 1 pp)": f"{roe:.1%}", "r": f"{r_:.1%}", "PER justificado": f"{just:.1f}x",
+                         "PER que se usa": f"{ca.scenarios[scn]['per_exit']:.1f}x"})
+        st.dataframe(pd.DataFrame(rows).set_index("Escenario"), width="stretch")
+        ph = A.per_history(ca.eps_df)
+        eps0 = ca.fin.get("eps_diluted", ca.fin.years[-1])
+        st.markdown(
+            "Es la fórmula de tu Excel: el **PER «justificado» por fundamentales** que pagaría un comprador racional en el año 10:\n\n"
+            "**PER = (1 − g / ROE) × (1 + g) / (r − g)**, con un mínimo de 5x.\n\n"
+            "- **g**: el crecimiento que la empresa mantendrá después del año 10 (el del año 10 del escenario, limitado a r − 3 pp para que la fórmula no se dispare).\n"
+            "- **ROE**: lo que rinde el beneficio que reinvierte; con un ROE alto necesita retener poco para crecer y puede repartir más, por eso vale más.\n"
+            "- **r**: tu rentabilidad exigida. Cuanto más exiges, menos pagas.\n\n"
+            f"Como referencia: PER pagado hoy **{(ca.params.price / eps0) if (ca.params.price and eps0 and eps0 > 0) else float('nan'):.1f}x**, "
+            f"PER histórico medio sin extremos **{(ph['PER sin outliers'] or float('nan')):.1f}x**, mínimo histórico **{(ph['PER mínimo'] or float('nan')):.1f}x**. "
+            "Si crees que la ventaja competitiva seguirá en el año 10 y el mercado pagará más (o menos), escribe tu PER en la casilla.")
     psum = sum(ca.scenarios[s]["prob"] for s in A.SCENARIOS)
     st.markdown(f"<span class='pill {'ok' if abs(psum - 1) < 1e-4 else 'ko'}'>Suma de probabilidades: {psum:.0%}</span>", unsafe_allow_html=True)
 
