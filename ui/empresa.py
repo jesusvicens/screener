@@ -158,6 +158,10 @@ def _risk_inputs(T: str) -> dict:
 def page():
     st.markdown("<span class='subtle'>FICHA DE EMPRESA</span>", unsafe_allow_html=True)
     opts = _universe_options()
+    qt = st.query_params.get("ticker")  # enlace desde el screener (pestaña nueva)
+    if qt:
+        st.session_state["ticker"] = qt.strip().upper()
+        del st.query_params["ticker"]
     default = st.session_state.get("ticker", "ADBE")
     idx = next((i for i, o in enumerate(opts) if o.split(" · ")[0] == default), 0)
     c1, c2 = st.columns([4, 1])

@@ -9,7 +9,7 @@ import streamlit as st
 
 from terminal import pipeline, screener, storage
 from ui.ayuda import explica
-from ui.common import show_cols_table
+from ui.common import company_url, show_cols_table
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _screen_table(base_stamp: float, mk_stamp: float, notas_stamp: float = 0.0):
@@ -59,6 +59,9 @@ def _on_preset():
 
 # ------------------------------------------------------------------ Screener
 def screener_page():
+    # La tabla de resultados ocupa casi todo el ancho de la pantalla.
+    st.markdown("<style>.block-container{max-width:98% !important;padding-left:1.5rem;padding-right:1.5rem;}</style>",
+                unsafe_allow_html=True)
     st.markdown("<span class='subtle'>SCREENER · TODAS LAS COTIZADAS DE EE. UU.</span>", unsafe_allow_html=True)
     st.markdown("# Screener")
     explica("screener")
@@ -168,7 +171,12 @@ def screener_page():
     kinds.update({v: "pct" for v in ren.values()})
     kinds.update({"BPA": "ps", "Precio": "ps", "Años caída ventas": "int", "Años caída BPA": "int", "Años con pérdidas": "int",
                   "Preguntas no aplicables": "int"})
-    show_cols_table(out, height=600, kinds={k: v for k, v in kinds.items() if k in out.columns})
+    ccfg = {}
+    if "Empresa" in out.columns:
+        out["Empresa"] = [company_url(t, n) for t, n in zip(out.index, out["Empresa"])]
+        ccfg["Empresa"] = st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$",
+                                                     help="Clic para abrir la ficha en una pestaña nueva")
+    show_cols_table(out, height=700, kinds={k: v for k, v in kinds.items() if k in out.columns}, column_config=ccfg)
     if len(res) > 1000:
         st.caption("Muestro las 1.000 primeras; afina los filtros o descarga el CSV completo.")
     b = st.columns([2, 1, 1])

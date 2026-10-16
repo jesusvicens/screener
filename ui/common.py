@@ -116,14 +116,32 @@ def show_rows_table(df: pd.DataFrame, kinds: dict | None = None, height: int | N
     st.dataframe(out, width="stretch", height=height or min(38 + 35 * len(out), 900))
 
 
-def show_cols_table(df: pd.DataFrame, height: int | None = None, kinds: dict | None = None):
+def link_key() -> str:
+    """Llave para enlaces internos (abre fichas en otra pestaña sin pedir otra vez la contraseña)."""
+    import hashlib
+    try:
+        pwd = st.secrets.get("APP_PASSWORD") or ""
+    except Exception:  # noqa: BLE001
+        pwd = ""
+    return hashlib.sha256(f"terminal-link|{pwd}".encode()).hexdigest()[:24] if pwd else ""
+
+
+def company_url(ticker: str, name: str = "") -> str:
+    k = link_key()
+    return f"./?ticker={ticker}" + (f"&k={k}" if k else "") + f"#{name or ticker}"
+
+
+def show_cols_table(df: pd.DataFrame, height: int | None = None, kinds: dict | None = None, column_config: dict | None = None):
     """Tabla con columnas = conceptos (formato por columna)."""
     kinds = kinds or {}
+    column_config = column_config or {}
     out = df.copy().astype(object)
     for c in out.columns:
+        if c in column_config:
+            continue
         k = kinds.get(c) or kind_of(c)
         out[c] = [fmt_cell(v, k) for v in df[c]]
-    st.dataframe(out, width="stretch", height=height or min(38 + 35 * len(out), 700))
+    st.dataframe(out, width="stretch", height=height or min(38 + 35 * len(out), 700), column_config=column_config or None)
 
 
 def kv_table(d: dict):

@@ -6,17 +6,26 @@ import streamlit as st
 
 st.set_page_config(page_title="Terminal · análisis de empresas", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
-from ui.common import inject_css  # noqa: E402
+from ui.common import inject_css, link_key  # noqa: E402
 from ui import empresa, otras  # noqa: E402
 
 
 def _password_gate() -> bool:
-    """Si defines APP_PASSWORD en los secrets, la terminal pide contraseña."""
+    """Si defines APP_PASSWORD en los secrets, la terminal pide contraseña.
+
+    Los enlaces que abren fichas en otra pestaña llevan una llave (?k=…) derivada de la contraseña,
+    para no tener que volver a escribirla en cada pestaña nueva.
+    """
     try:
         pwd = st.secrets.get("APP_PASSWORD")
     except Exception:
         pwd = None
     if not pwd or st.session_state.get("auth_ok"):
+        return True
+    k = st.query_params.get("k")
+    if k and k == link_key():
+        st.session_state["auth_ok"] = True
+        del st.query_params["k"]
         return True
     st.markdown("# ▣ Terminal")
     p = st.text_input("Contraseña", type="password")
