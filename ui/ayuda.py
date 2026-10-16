@@ -13,9 +13,14 @@ TEXTOS: dict[str, str] = {
 - **Rentabilidad del capital:** ROIC y ROE por encima del 15 % durante años indican que la empresa gana mucho con lo que tiene invertido. El «ROIC ajustado I+D» trata el I+D como inversión (más justo para tecnológicas y farmacéuticas).
 """,
     "historico": """
-**Para qué sirve:** ver la evolución de cualquier dato año a año, como en macrotrends.
+**Para qué sirve:** ver la evolución de cualquier dato, con el mismo esquema que macrotrends.
 
-Elige la métrica a la izquierda. La tabla muestra el valor de cada ejercicio fiscal (con su fecha de cierre real) y la variación respecto al año anterior. Fuente: los 10-K presentados en la SEC; los BPA y acciones están ajustados por splits.
+- **Arriba, la categoría** (Precio, Ingresos y beneficio, Activos y pasivos, Márgenes, Ratios de precio, Otros ratios, Otras métricas) y **debajo, la métrica**.
+- **Cifras** (ventas, beneficio, balance…): barras por ejercicio y, debajo, el crecimiento de cada año (verde si sube, rojo si baja).
+- **Márgenes:** ventas y resultado en barras y el margen en línea; «Todos los márgenes» los compara juntos.
+- **Ratios de precio** (PER, P/V, P/VC, P/FCF): arriba la cotización diaria y abajo el ratio de cada día = precio / dato por acción del último ejercicio cerrado, con su mediana. Te dice si hoy está caro o barato frente a su propia historia.
+- **Precio:** cotización ajustada por splits con botones de periodo (1A, 3A, 5A, 10A, Todo) y tabla por año.
+- Debajo de cada gráfico, la tabla anual y un resumen (crecimientos a 1, 3, 5 y 10 años o medias). Fuente: 10-K de la SEC; precios de Yahoo/Stooq. De momento, datos anuales (no trimestrales).
 """,
     "examen": """
 **Para qué sirve:** tu filtro de calidad. Diez bloques: seis **cualitativos** (¿es un buen negocio, con buena dirección y futuro?) y cuatro **financieros** (¿los números lo confirman?).

@@ -245,7 +245,7 @@ def _header(ca: pipeline.CompanyAnalysis):
 
 
 def _save_bar(T, work, ca):
-    c1, c2, c4, c5, c3 = st.columns([1, 1, 1, 1.1, 1.9])
+    c1, c2, c4, c5, c3 = st.columns([1, 1, 1, 1.7, 1.3])
     from ui.prioridad import selector_lista
     selector_lista(T, c5)
     if c4.button("↺ Volver a lo guardado", width="stretch", help="Descarta los cambios sin guardar de esta empresa."):
@@ -358,33 +358,8 @@ def _hist_series(ca, key):
 
 def _tab_historico(T, ca):
     explica("historico")
-    f = ca.fin
-    names = [m[0] for m in HIST_METRICS]
-    c1, c2 = st.columns([2, 5])
-    sel = c1.radio("Métrica", names, key=_key(T, "hist_sel"), label_visibility="collapsed")
-    label, key, kind = next(m for m in HIST_METRICS if m[0] == sel)
-    vals = _hist_series(ca, key)
-    ys = [str(y) for y in f.years]
-    with c2:
-        st.markdown(f"### {f.name.title()} · {label} {f.years[0]}-{f.years[-1]} | {f.ticker}")
-        fig = go.Figure()
-        fig.add_bar(x=ys, y=vals, marker_color=BLUE, text=[fmt_cell(v, kind) for v in vals], textposition="outside",
-                    textfont=dict(size=11), hovertemplate="%{x}: %{text}<extra></extra>")
-        if kind == "pct":
-            fig.update_yaxes(tickformat=".0%")
-        fig_layout(fig, "", 380)
-        fig.update_layout(bargap=0.25)
-        st.plotly_chart(fig, width="stretch")
-        rows = []
-        prev = None
-        for y, v in zip(f.years, vals):
-            chg = (v / prev - 1) if (kind != "pct" and v is not None and prev not in (None, 0) and prev > 0) else None
-            rows.append({"Año fiscal": str(y), "Cierre": f.period_end.get(y, ""), label: fmt_cell(v, kind),
-                         "Variación anual": pct(chg) if chg is not None else "—"})
-            prev = v
-        st.dataframe(pd.DataFrame(rows[::-1]).set_index("Año fiscal"), width="stretch", height=38 + 35 * len(rows))
-        unit = f"millones de {f.currency}" if kind == "m" else ("por acción" if kind == "ps" else "")
-        st.caption(f"{label}{' en ' + unit if unit else ''}. Fuente: 10-K en SEC EDGAR.")
+    from ui import historico
+    historico.tab(T, ca, _key)
 
 
 def _tab_examen(T, ca):

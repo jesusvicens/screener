@@ -128,7 +128,7 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
 
 
 # ------------------------------------------------------------------ mis listas
-def _tabla_lista(df: pd.DataFrame, d: dict, gu: dict, tickers: list[str]) -> pd.DataFrame:
+def _tabla_lista(df: pd.DataFrame, d: dict, gu: dict, tickers: list[str], g: str = "") -> pd.DataFrame:
     idx = df.drop_duplicates("Ticker").set_index("Ticker")
     rows = []
     for t in tickers:
@@ -146,13 +146,15 @@ def _tabla_lista(df: pd.DataFrame, d: dict, gu: dict, tickers: list[str]) -> pd.
         dist = (precio / obj - 1) if (precio and obj) else None
         rows.append({
             "Ticker": t, "Empresa": company_url(t, (r["Empresa"] if r is not None else t)),
-            "Lista": e.get("grupo"), "Comentario": e.get("comentario") or "", "Precio objetivo": obj,
+            "Mover a": "—", "Añadir también a": "—",
+            "Otras listas": ", ".join(x for x in e.get("listas", []) if x != g),
+            "Comentario": e.get("comentario") or "", "Precio objetivo": obj,
             "Precio": precio, "Distancia al objetivo": dist,
             "Aviso": "🔔 En precio" if (dist is not None and dist <= 0) else "",
             "Nota financiera": r["Nota financiera"] if r is not None else None,
             "Nota final (guardada)": res.get("Nota final"), "Margen de seguridad (guardado)": res.get("Margen de seguridad"),
             "Precio máx. sugerido": obj_sug, "Analizada el": (gu.get(t) or {}).get("actualizado"),
-            "Añadida": e.get("añadida"), "Quitar": False,
+            "Añadida": e.get("añadida"), "Quitar de esta lista": False,
         })
     out = pd.DataFrame(rows)
     out["Precio objetivo"] = pd.to_numeric(out["Precio objetivo"], errors="coerce").astype(float)
@@ -180,40 +182,9 @@ def _mis_listas(df: pd.DataFrame, d: dict, gu: dict):
         st.success("🔔 Han llegado a tu precio objetivo: " + ", ".join(alerts))
 
     grupos = d["grupos"]
-    counts = {g: sum(1 for e in d["empresas"].values() if e.get("grupo") == g) for g in grupos}
-    tabs = st.tabs([f"{g} ({counts[g]})" for g in grupos])
-    for g, tab in zip(grupos, tabs):
-        with tab:
-            tickers = sorted(t for t, e in d["empresas"].items() if e.get("grupo") == g)
-            if not tickers:
-                st.caption("Vacía.")
-                continue
-            tbl = _tabla_lista(df, d, gu, tickers).set_index("Ticker")
-            ed = st.data_editor(
-                tbl, key=f"ed_{g}", width="stretch", height=min(42 + 35 * len(tbl), 650),
-                disabled=[c for c in tbl.columns if c not in ("Lista", "Comentario", "Precio objetivo", "Quitar")],
-                column_config={
-                    "Empresa": st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$"),
-                    "Lista": st.column_config.SelectboxColumn("Lista", options=grupos, required=True, help="Cámbiala para moverla"),
-                    "Comentario": st.column_config.TextColumn("Comentario", width="large"),
-                    "Precio objetivo": st.column_config.NumberColumn("Precio objetivo", format="%.2f",
-                                                                     help="Te aviso cuando el precio llegue aquí"),
-                    "Precio máx. sugerido": st.column_config.TextColumn(help="Tu valor estimado guardado × (1 − margen de seguridad)"),
-                    "Quitar": st.column_config.CheckboxColumn("Quitar"),
-                })
-            if st.button("Guardar cambios", key=f"save_{g}", type="primary"):
-                for t, row in ed.iterrows():
-                    if row["Quitar"]:
-                        listas.remove(d, [t])
-                        continue
-                    e = d["empresas"][t]
-                    e["grupo"] = row["Lista"]
-                    e["comentario"] = row["Comentario"] or ""
-                    e["objetivo"] = None if pd.isna(row["Precio objetivo"]) else float(row["Precio objetivo"])
-                _guardar(d, "Listas guardadas")
-                st.rerun()
-
-    with st.expander("Gestionar listas"):
+    counts = {g: len(listas.in_list(d, g)) for g in grupos}
+    with st.container(border=True):
+        st.markdown("<div class='subtle'>Crear o borrar listas</div>", unsafe_allow_html=True)
         c = st.columns([2, 1, 2, 1])
         nueva = c[0].text_input("Nueva lista", placeholder="Nombre (p. ej. «Compounders europeos»)", label_visibility="collapsed")
         if c[1].button("Crear lista", width="stretch") and nueva.strip():
@@ -227,6 +198,7 @@ def _mis_listas(df: pd.DataFrame, d: dict, gu: dict):
             d["grupos"].remove(borrar)
             _guardar(d, f"Lista «{borrar}» borrada")
             st.rerun()
+        st.markdown("<div class='subtle'>Añadir cualquier empresa a una lista</div>", unsafe_allow_html=True)
         a = st.columns([2, 1.4, 1])
         txt = a[0].text_input("Añadir tickers a mano", placeholder="Tickers separados por comas: COST, ASML…", label_visibility="collapsed")
         g2 = a[1].selectbox("Lista", d["grupos"], key="man_grupo", label_visibility="collapsed")
@@ -234,27 +206,62 @@ def _mis_listas(df: pd.DataFrame, d: dict, gu: dict):
             ts = [t.strip().upper() for t in txt.replace(";", ",").replace(" ", ",").split(",") if t.strip()]
             _guardar(listas.add(d, ts, g2), f"{len(ts)} añadidas a «{g2}»")
             st.rerun()
+    tabs = st.tabs([f"{g} ({counts[g]})" for g in grupos])
+    for g, tab in zip(grupos, tabs):
+        with tab:
+            tickers = listas.in_list(d, g)
+            if not tickers:
+                st.caption("Vacía.")
+                continue
+            tbl = _tabla_lista(df, d, gu, tickers, g).set_index("Ticker")
+            otras = ["—"] + [x for x in grupos if x != g]
+            ed = st.data_editor(
+                tbl, key=f"ed_{g}", width="stretch", height=min(42 + 35 * len(tbl), 650),
+                disabled=[c for c in tbl.columns if c not in ("Mover a", "Añadir también a", "Comentario", "Precio objetivo",
+                                                              "Quitar de esta lista")],
+                column_config={
+                    "Empresa": st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$"),
+                    "Mover a": st.column_config.SelectboxColumn("Mover a", options=otras, help="La saca de esta lista y la mete en otra"),
+                    "Añadir también a": st.column_config.SelectboxColumn("Añadir también a", options=otras,
+                                                                         help="La deja aquí y la añade además a otra lista"),
+                    "Comentario": st.column_config.TextColumn("Comentario", width="large"),
+                    "Precio objetivo": st.column_config.NumberColumn("Precio objetivo", format="%.2f",
+                                                                     help="Te aviso cuando el precio llegue aquí"),
+                    "Precio máx. sugerido": st.column_config.TextColumn(help="Tu valor estimado guardado × (1 − margen de seguridad)"),
+                    "Quitar de esta lista": st.column_config.CheckboxColumn("Quitar de esta lista"),
+                })
+            if st.button("Guardar cambios", key=f"save_{g}", type="primary"):
+                for t, row in ed.iterrows():
+                    e = d["empresas"].get(t)
+                    if e is None:
+                        continue
+                    e["comentario"] = row["Comentario"] or ""
+                    e["objetivo"] = None if pd.isna(row["Precio objetivo"]) else float(row["Precio objetivo"])
+                    if row["Añadir también a"] and row["Añadir también a"] != "—":
+                        listas.add(d, [t], row["Añadir también a"])
+                    if row["Mover a"] and row["Mover a"] != "—":
+                        listas.add(d, [t], row["Mover a"])
+                        listas.remove_from(d, t, g)
+                    elif row["Quitar de esta lista"]:
+                        listas.remove_from(d, t, g)
+                _guardar(d, "Listas guardadas")
+                st.rerun()
+
     st.caption(f"Se guardan en tu almacenamiento ({storage.backend()}). Hoy: {date.today():%d-%m-%Y}.")
 
 
 # ------------------------------------------------------------------ selector para la ficha y el screener
 def selector_lista(ticker: str, container=None):
-    """Desplegable «Lista» para la ficha de empresa: mueve la empresa de lista al momento."""
+    """Selector «Listas» para la ficha: una empresa puede estar en varias listas a la vez."""
     box = container or st
     d = _listas()
-    actual = listas.group_of(d, ticker)
-    opts = ["— Sin lista —"] + d["grupos"]
     k = f"lista_sel_{ticker}"
-    st.session_state[k] = actual if actual in opts else opts[0]  # siempre refleja lo guardado
+    st.session_state[k] = [g for g in listas.lists_of(d, ticker) if g in d["grupos"]]  # siempre refleja lo guardado
 
     def _cambio():
-        sel = st.session_state[k]
         dd = _listas()
-        if sel == opts[0]:
-            listas.remove(dd, [ticker])
-            _guardar(dd, f"{ticker} quitada de tus listas")
-        else:
-            _guardar(listas.add(dd, [ticker], sel), f"{ticker} → «{sel}»")
+        sel = st.session_state[k]
+        _guardar(listas.set_lists(dd, ticker, sel), f"{ticker}: " + (", ".join(sel) if sel else "fuera de tus listas"))
 
-    box.selectbox("Lista", opts, key=k, on_change=_cambio, label_visibility="collapsed",
-                  help="Guarda la empresa en una de tus listas (página Prioridad)")
+    box.multiselect("Listas", d["grupos"], key=k, on_change=_cambio, label_visibility="collapsed", placeholder="Añadir a mis listas…",
+                    help="Puedes ponerla en varias listas a la vez (página Prioridad)")
