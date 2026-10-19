@@ -47,6 +47,10 @@ def _guardar(d: dict, msg: str):
 def _universo() -> pd.DataFrame | None:
     from ui.otras import _screen_table
     base = screener.load_base(9999)
+    mk, mk_age = screener.load_market()
+    if base is None or mk is None or (mk_age or 0) > 24:
+        screener.sync_from_repo()
+        base = screener.load_base(9999)
     if base is None:
         return None
     mk_stamp = screener.PRICES_FILE.stat().st_mtime if screener.PRICES_FILE.exists() else 0.0

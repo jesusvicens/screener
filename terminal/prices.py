@@ -14,6 +14,13 @@ import requests
 def history(ticker: str, years: int = 12) -> pd.Series:
     """Serie diaria de cierres ajustados (por splits). Vacía si no hay datos."""
     t = ticker.upper().replace(".", "-")
+    try:  # ficha guardada anoche en tu repo privado (empresas analizadas, en listas o en cartera)
+        from . import remoto
+        s = remoto.ficha_prices(t)
+        if s is not None and (pd.Timestamp(date.today()) - s.index[-1]).days <= 5:
+            return s[s.index >= pd.Timestamp(date.today() - timedelta(days=365 * years))]
+    except Exception:  # noqa: BLE001
+        pass
     try:
         import yfinance as yf
         h = yf.Ticker(t).history(period=f"{years}y", auto_adjust=False)

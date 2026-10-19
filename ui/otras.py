@@ -67,6 +67,11 @@ def screener_page():
     explica("screener")
     base = screener.load_base(7)
     mk, mk_age = screener.load_market()
+    if base is None or mk is None or (mk_age or 0) > 24:
+        with st.spinner("Cargando los datos preparados esta noche…"):
+            if any(screener.sync_from_repo().values()):
+                base = screener.load_base(7)
+                mk, mk_age = screener.load_market()
     c = st.columns([3, 1, 1])
     upd_base = c[1].button("↻ Fundamentales (≈1-2 min)", width="stretch", help="Descarga de la SEC. Se refresca sola cada semana.")
     upd_mk = c[2].button("↻ Precios y sectores", width="stretch", help="Una sola llamada al screener público de Nasdaq.")

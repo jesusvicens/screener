@@ -32,6 +32,12 @@ El botón «⬇ Excel (mi plantilla)» de cada ficha genera tu propio Excel de a
 ## Notas financieras de todas las empresas
 `scripts/notas_financieras.py` calcula el examen financiero de todo el universo con el archivo masivo de la SEC (`companyfacts.zip`). Lo ejecuta cada domingo la GitHub Action «Notas financieras» y guarda `data/notas_financieras.csv.gz`; el screener lo lee. Para lanzarlo a mano: GitHub → Actions → «Notas financieras (todas las empresas)» → Run workflow.
 
+## Datos preparados cada noche
+Para que la app abra rápido aunque Streamlit la haya reiniciado (su disco se borra al dormirse):
+- **Screener** (datos públicos): la GitHub Action «Datos del screener» publica cada noche, de lunes a viernes, precios y sectores (cada día) y fundamentales (cada semana) en la rama `datos` de este repo. La app los lee al arrancar.
+- **Fichas de tus empresas** (analizadas, en listas o en cartera): la Action «Fichas de mis empresas» de tu repo privado de datos guarda cada noche sus datos de la SEC y su cotización en la rama `fichas`. La ficha los lee con tu `GITHUB_TOKEN`; si una empresa no está ahí (o el dato tiene más de 36 h), la descarga de la SEC/Yahoo como siempre.
+Las dos ramas se reescriben cada noche sin historial, así que no engordan los repos.
+
 ## Ponerla online (gratis, solo para ti)
 
 1. Sube esta carpeta a un repositorio **privado** de GitHub (puede ser tu repo `screener`).

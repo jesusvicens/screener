@@ -290,6 +290,15 @@ def with_avg_growth(df: pd.DataFrame, years: dict[str, int] | None = None) -> pd
     return df
 
 
+def sync_from_repo() -> dict:
+    """Trae los datos que GitHub Actions prepara cada noche (rama «datos»), si son más nuevos que los locales."""
+    try:
+        from . import remoto
+        return remoto.sync_screener(BASE_FILE, PRICES_FILE)
+    except Exception:  # noqa: BLE001
+        return {"base": False, "market": False}
+
+
 def save_base(df: pd.DataFrame):
     df.to_pickle(BASE_FILE)
 

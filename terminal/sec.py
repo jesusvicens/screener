@@ -54,6 +54,17 @@ def _cached_json(name: str, url: str, max_age_h: float) -> dict:
     if path.exists() and (time.time() - path.stat().st_mtime) < max_age_h * 3600:
         with gzip.open(path, "rt", encoding="utf-8") as f:
             return json.load(f)
+    if name.startswith(("facts_", "subs_")):
+        # Fichas guardadas cada noche en tu repo privado (empresas analizadas, en listas o en cartera).
+        try:
+            from . import remoto
+            raw = remoto.ficha_file(f"{name}.json.gz")
+            if raw:
+                path.write_bytes(raw)
+                with gzip.open(path, "rt", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:  # noqa: BLE001
+            pass
     data = _get(url).json()
     with gzip.open(path, "wt", encoding="utf-8") as f:
         json.dump(data, f)
