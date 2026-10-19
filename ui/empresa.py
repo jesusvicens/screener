@@ -9,7 +9,7 @@ import streamlit as st
 
 from terminal import analysis as A, exam as E, financials as F, pipeline, plantilla, riesgo as R, sec, storage
 from ui.ayuda import explica
-from ui.common import (AMBER, BLUE, GREEN, MUTED, RED, fig_layout, fmt_cell, kv_table, mult, num, pct, show_cols_table,
+from ui.common import (AMBER, BLUE, GREEN, MUTED, RED, fig_layout, fmt_cell, kv_table, money, mult, num, pct, show_cols_table,
                        show_rows_table)
 
 
@@ -100,6 +100,9 @@ def _init_widgets(T: str, saved: dict, sugg: dict):
     for k, v in D.items():
         if k not in st.session_state:
             st.session_state[k] = persist.get(k, v)
+        else:
+            # Reasignar convierte el valor del control en estado propio: así no se pierde aunque su pestaña no se dibuje.
+            st.session_state[k] = st.session_state[k]
 
 
 def _persist_widgets(T: str):
@@ -193,35 +196,35 @@ def page():
     _header(ca)
     _save_bar(T, work, ca)
 
-    tabs = st.tabs(["Resumen", "Histórico", "Examen", "Cualitativo y documentos", "Guías y resultados", "Estados financieros", "Modelo EPS", "ROIC",
-                    "Escenarios y valoración", "Riesgo", "Presentaciones SEC", "Notas"], key="ficha_tabs")  # recuerda la pestaña
-    with tabs[0]:
-        _tab_resumen(ca)
-    with tabs[1]:
-        _tab_historico(T, ca)
-    with tabs[2]:
-        _tab_examen(T, ca)
-    with tabs[3]:
+    def _cual():
         from ui import cualitativo
         cualitativo.tab(T, ca, ca.answers, st.session_state.get(_key(T, "cual_motivos"), {}) or {})
-    with tabs[4]:
+
+    def _guias():
         from ui import guias
         explica("guias")
         guias.tab(T, ca)
-    with tabs[5]:
-        _tab_estados(ca)
-    with tabs[6]:
-        _tab_eps(ca)
-    with tabs[7]:
-        _tab_roic(T, ca)
-    with tabs[8]:
-        _tab_escenarios(T, ca)
-    with tabs[9]:
-        _tab_riesgo(T, ca)
-    with tabs[10]:
-        _tab_filings(ca)
-    with tabs[11]:
-        _tab_notas(T, ca)
+
+    # Ordenadas por el flujo de trabajo: datos → análisis → valoración → fuentes. Solo se dibuja la pestaña abierta (más rápido).
+    pestañas = [
+        (":material/dashboard: Resumen", lambda: _tab_resumen(ca)),
+        (":material/show_chart: Histórico", lambda: _tab_historico(T, ca)),
+        (":material/table_chart: Estados financieros", lambda: _tab_estados(ca)),
+        (":material/flag: Guías y resultados", _guias),
+        (":material/checklist: Examen", lambda: _tab_examen(T, ca)),
+        (":material/menu_book: Cualitativo y documentos", _cual),
+        (":material/trending_up: ROIC", lambda: _tab_roic(T, ca)),
+        (":material/calculate: Modelo EPS", lambda: _tab_eps(ca)),
+        (":material/balance: Escenarios y valoración", lambda: _tab_escenarios(T, ca)),
+        (":material/warning: Riesgo", lambda: _tab_riesgo(T, ca)),
+        (":material/description: SEC", lambda: _tab_filings(ca)),
+        (":material/edit_note: Notas", lambda: _tab_notas(T, ca)),
+    ]
+    tabs = st.tabs([n for n, _ in pestañas], key="ficha_tabs", on_change="rerun")  # recuerda la pestaña
+    for (n, fn), tb in zip(pestañas, tabs):
+        if tb.open:
+            with tb:
+                fn()
 
 
 def _header(ca: pipeline.CompanyAnalysis):
@@ -236,17 +239,42 @@ def _header(ca: pipeline.CompanyAnalysis):
                 f"<span class='pill'>Último ejercicio {L} · cierre {f.period_end.get(L, '')}</span>"
                 f"<span class='pill am'>Fase: {ca.phase}</span>", unsafe_allow_html=True)
     v = ca.val
+    h = ca.hist.dropna() if ca.hist is not None else pd.Series(dtype=float)
+    h1 = h[h.index >= h.index.max() - pd.DateOffset(years=1)] if len(h) else h
+    ch1 = (float(h1.iloc[-1]) / float(h1.iloc[0]) - 1) if len(h1) > 20 else None
+    spark_px = [round(float(x), 2) for x in h1.iloc[::5]] if len(h1) > 20 else None
+    rev = [x for x in f.series("revenue") if x is not None]
+    pe_hist = [round(x, 1) for x in ca.eps_df["PER"] if x is not None and x == x and 0 < x < 200] if "PER" in ca.eps_df else []
+    pe_now = (P / eps) if (P and eps and eps > 0) else None
     cols = st.columns(8)
-    cols[0].metric("Precio", num(P, 2) if P else "—", ca.params.price_date or ("manual" if ca.saved.get("precio_manual") else ""))
-    cols[1].metric("PER", mult((P / eps) if (P and eps and eps > 0) else None))
-    cols[2].metric("Capitalización", f"{num(mcap / 1000, 1)} B" if mcap else "—")
-    cols[3].metric(f"Ventas {L}", f"{num((f.get('revenue', L) or 0) / 1000, 2)} B")
-    cols[4].metric("Nota (examen)", f"{ca.score['final']:.2f}" if ca.score["cual_respondidas"] else f"{ca.score['financiera']:.2f}*",
-                   f"{ca.score['respondidas']}/{ca.score['total']} resp." if ca.score["cual_respondidas"] else "*solo financiera")
+    cols[0].metric("Precio", num(P, 2) if P else "—", (("+" if ch1 >= 0 else "") + pct(ch1) + " 1 año") if ch1 is not None else None,
+                   chart_data=spark_px, chart_type="area",
+                   help=f"Última cotización ({ca.params.price_date or 'manual'}). Debajo, la variación y el gráfico del último año.")
+    med = sorted(pe_hist)[len(pe_hist) // 2] if pe_hist else None
+    cols[1].metric("PER", mult(pe_now), (f"mediana {mult(med)}" if med else None), delta_color="off", delta_arrow="off",
+                   chart_data=(pe_hist + ([round(pe_now, 1)] if pe_now else [])) or None, chart_type="line",
+                   help="Precio / BPA diluido del último ejercicio. Debajo, la mediana de los PER medios de cada año.")
+    cols[2].metric("Capitalización", money(mcap) if mcap else "—", help="Precio × acciones en circulación.")
+    g = (rev[-1] / rev[-2] - 1) if len(rev) >= 2 and rev[-2] else None
+    cols[3].metric(f"Ventas {L}", money(f.get("revenue", L)), (("+" if g >= 0 else "") + pct(g) + " a/a") if g is not None else None,
+                   chart_data=[round(x) for x in rev] or None, chart_type="bar",
+                   help="Ventas del último ejercicio y su evolución en el periodo elegido.")
+    sc = ca.score
+    cols[4].metric("Nota (examen)", (num(sc["final"], 2) if sc["cual_respondidas"] else num(sc["financiera"], 2) + "*") + " / 10",
+                   f"{sc['respondidas']}/{sc['total']} resp." if sc["cual_respondidas"] else "*solo financiera",
+                   delta_color="off", delta_arrow="off",
+                   help="Nota del examen (0–10). Con asterisco, solo la parte financiera automática: falta tu examen cualitativo.")
     if v and v.value:
-        cols[5].metric("Valor estimado", num(v.value["Valor estimado hoy = E[VF] / (1+r)^n"], 2))
-        cols[6].metric("Margen seguridad", pct(v.value["Margen de seguridad al precio actual"]))
-        cols[7].metric("Veredicto", v.coverage.get("Veredicto", "—"), f"rent. {pct(v.value['Rentabilidad anual implícita en la media'])}")
+        mos = v.value["Margen de seguridad al precio actual"]
+        rent = v.value["Rentabilidad anual implícita en la media"]
+        cols[5].metric("Valor estimado", num(v.value["Valor estimado hoy = E[VF] / (1+r)^n"], 2),
+                       help="Valor por acción hoy según tus escenarios (pestaña «Escenarios y valoración»).")
+        cols[6].metric("Margen seg.", pct(mos), "a favor" if (mos or 0) > 0 else "en contra",
+                       delta_color="normal" if (mos or 0) > 0 else "inverse", delta_arrow="off",
+                       help="Cuánto por debajo del valor estimado cotiza. Positivo = cotiza por debajo del valor.")
+        cols[7].metric("Veredicto", v.coverage.get("Veredicto", "—"), f"{pct(rent)} al año", delta_arrow="off",
+                       delta_color="normal" if (((rent or 0) >= ca.params.r) == ((rent or 0) >= 0)) else "inverse",
+                       help=f"Rentabilidad anual implícita al precio actual. Verde si supera la que exiges ({pct(ca.params.r)}).")
     for w in f.warnings + ((v.warnings if v else [])):
         st.caption(f"⚠ {w}")
 
@@ -292,35 +320,72 @@ def _tab_resumen(ca):
     explica("resumen")
     f = ca.fin
     ys = [str(y) for y in f.years]
+    eps_df = ca.eps_df
     c1, c2 = st.columns(2)
     fig = go.Figure()
-    fig.add_bar(x=ys, y=f.series("revenue"), name="Ventas (M)", marker_color=BLUE, opacity=.85)
-    fig.add_bar(x=ys, y=f.series("net_income"), name="Beneficio neto (M)", marker_color=AMBER)
-    fig.add_bar(x=ys, y=f.series("fcf"), name="Flujo de caja libre (M)", marker_color=GREEN, opacity=.8)
-    c1.plotly_chart(fig_layout(fig, "Ventas, beneficio y caja libre"), width="stretch")
+    fig.add_bar(x=ys, y=f.series("revenue"), name="Ventas", marker_color=BLUE, hovertemplate="%{y:,.0f} M$")
+    fig.add_bar(x=ys, y=f.series("net_income"), name="Beneficio neto", marker_color=AMBER, hovertemplate="%{y:,.0f} M$")
+    fig.add_bar(x=ys, y=f.series("fcf"), name="Flujo de caja libre", marker_color=GREEN, hovertemplate="%{y:,.0f} M$")
+    fig.update_yaxes(tickformat=",.0f")
+    c1.plotly_chart(fig_layout(fig, "Ventas, beneficio y caja libre", unit="millones de $"), width="stretch")
+    eps = f.series("eps_diluted")
     fig = go.Figure()
-    fig.add_scatter(x=ys, y=f.series("eps_diluted"), name="BPA diluido", mode="lines+markers", line=dict(color=AMBER, width=2))
-    eps_df = ca.eps_df
-    if eps_df["Precio medio"].notna().any():
-        fig.add_scatter(x=ys, y=list(eps_df["PER"]), name="PER (eje dcho.)", yaxis="y2", mode="lines+markers", line=dict(color=MUTED, dash="dot"))
-        fig.update_layout(yaxis2=dict(overlaying="y", side="right", showgrid=False))
-    c2.plotly_chart(fig_layout(fig, "BPA y PER histórico"), width="stretch")
+    fig.add_bar(x=ys, y=eps, name="BPA diluido", marker_color=[BLUE if (e or 0) >= 0 else RED for e in eps],
+                hovertemplate="%{y:,.2f} $<extra>BPA</extra>", text=[num(e, 2) for e in eps], textposition="outside", cliponaxis=False,
+                textfont=dict(size=10, color=MUTED))
+    fig.update_layout(showlegend=False)
+    c2.plotly_chart(fig_layout(fig, "Beneficio por acción (BPA diluido)", unit="$ por acción"), width="stretch")
+
     c3, c4 = st.columns(2)
+    per = [p if (p is not None and p == p and 0 < p < 200) else None for p in eps_df["PER"]] if "PER" in eps_df else []
+    fig = go.Figure()
+    if any(p is not None for p in per):
+        vals = sorted(p for p in per if p is not None)
+        med = vals[len(vals) // 2] if len(vals) % 2 else (vals[len(vals) // 2 - 1] + vals[len(vals) // 2]) / 2
+        fig.add_scatter(x=ys, y=per, name="PER medio del año", mode="lines+markers", line=dict(color=BLUE, width=2), marker=dict(size=8),
+                        hovertemplate="%{y:,.1f}x<extra>PER</extra>", connectgaps=False)
+        fig.add_hline(y=med, line_dash="dash", line_color=MUTED, line_width=1,
+                      annotation_text=f"mediana {mult(med)}", annotation_position="top left", annotation_font_color=MUTED)
+        P, e0 = ca.params.price, eps[-1] if eps else None
+        if P and e0 and e0 > 0:
+            fig.add_scatter(x=[ys[-1]], y=[P / e0], name="PER hoy", mode="markers", marker=dict(size=12, color=AMBER, symbol="diamond",
+                            line=dict(color="#ffffff", width=2)), hovertemplate="%{y:,.1f}x<extra>PER hoy</extra>")
+        fig.update_yaxes(ticksuffix="x", rangemode="tozero")
+    else:
+        fig.add_annotation(text="Sin precios históricos para calcular el PER", showarrow=False, font=dict(color=MUTED))
+    c3.plotly_chart(fig_layout(fig, "PER histórico: ¿cara o barata frente a sí misma?", unit="veces beneficio"), width="stretch")
     fig = go.Figure()
     for k, name, col in [("gm_series", "Margen bruto", BLUE), ("om_series", "Margen operativo", AMBER)]:
-        s = ca.stats[k]
-        fig.add_scatter(x=[str(y) for y in s], y=list(s.values()), name=name, mode="lines+markers", line=dict(color=col))
+        s_ = ca.stats[k]
+        fig.add_scatter(x=[str(y) for y in s_], y=list(s_.values()), name=name, mode="lines+markers", line=dict(color=col, width=2),
+                        hovertemplate="%{y:.1%}")
     nm = [(n / r) if (n is not None and r) else None for n, r in zip(f.series("net_income"), f.series("revenue"))]
-    fig.add_scatter(x=ys, y=nm, name="Margen neto", mode="lines+markers", line=dict(color=GREEN))
-    fig.update_yaxes(tickformat=".0%")
-    c3.plotly_chart(fig_layout(fig, "Márgenes"), width="stretch")
+    fig.add_scatter(x=ys, y=nm, name="Margen neto", mode="lines+markers", line=dict(color=GREEN, width=2), hovertemplate="%{y:.1%}")
+    fig.update_yaxes(tickformat=".0%", rangemode="tozero")
+    c4.plotly_chart(fig_layout(fig, "Márgenes", unit="% de las ventas"), width="stretch")
+
+    c5, c6 = st.columns(2)
     fig = go.Figure()
     r = ca.roic_df
-    fig.add_scatter(x=ys, y=list(r.loc["ROIC"]), name="ROIC", mode="lines+markers", line=dict(color=AMBER))
-    fig.add_scatter(x=ys, y=list(r.loc["ROIC ajustado (I+D capitalizado)"]), name="ROIC ajustado I+D", mode="lines+markers", line=dict(color=BLUE))
-    fig.add_scatter(x=ys, y=list(eps_df["ROE"]), name="ROE", mode="lines+markers", line=dict(color=MUTED, dash="dot"))
-    fig.update_yaxes(tickformat=".0%")
-    c4.plotly_chart(fig_layout(fig, "Rentabilidad del capital"), width="stretch")
+    fig.add_scatter(x=ys, y=list(r.loc["ROIC"]), name="ROIC", mode="lines+markers", line=dict(color=BLUE, width=2), hovertemplate="%{y:.1%}")
+    fig.add_scatter(x=ys, y=list(r.loc["ROIC ajustado (I+D capitalizado)"]), name="ROIC ajustado I+D", mode="lines+markers",
+                    line=dict(color=AMBER, width=2), hovertemplate="%{y:.1%}")
+    fig.add_scatter(x=ys, y=list(eps_df["ROE"]), name="ROE", mode="lines+markers", line=dict(color=GREEN, width=2, dash="dot"),
+                    hovertemplate="%{y:.1%}")
+    fig.update_yaxes(tickformat=".0%", rangemode="tozero")
+    c5.plotly_chart(fig_layout(fig, "Rentabilidad del capital", unit="% anual"), width="stretch")
+    sh = f.series("shares_diluted")
+    fig = go.Figure()
+    fig.add_bar(x=ys, y=sh, name="Acciones diluidas", marker_color=MUTED, hovertemplate="%{y:,.0f} M<extra>Acciones</extra>")
+    shv = [x for x in sh if x]
+    if len(shv) >= 2:
+        chg = shv[-1] / shv[0] - 1
+        fig.add_annotation(text=f"{'−' if chg < 0 else '+'}{pct(abs(chg))} en el periodo · {'recompra' if chg < 0 else 'dilución'}",
+                           xref="paper", yref="paper", x=1, y=1.08, showarrow=False, xanchor="right",
+                           font=dict(color=(GREEN if chg < 0 else RED), size=12))
+        fig.update_yaxes(range=[min(shv) * 0.85, max(shv) * 1.05])
+    fig.update_layout(showlegend=False)
+    c6.plotly_chart(fig_layout(fig, "Acciones en circulación (diluidas)", unit="millones"), width="stretch")
 
     st.markdown("## Lo primero que miras")
     s = ca.stats

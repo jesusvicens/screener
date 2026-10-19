@@ -5,12 +5,18 @@ import streamlit as st
 
 TEXTOS: dict[str, str] = {
     "resumen": """
-**Para qué sirve:** la foto rápida de la empresa en cuatro gráficos y cinco datos, lo primero que miras antes de decidir si merece análisis.
+**Para qué sirve:** la foto rápida de la empresa en seis gráficos y cinco datos, lo primero que miras antes de decidir si merece análisis.
+
+- **Fichas de arriba:** precio con la variación y el gráfico del último año, PER frente a su mediana histórica, ventas con su evolución, tu nota y la valoración. Verde = a favor, rojo = en contra. Pasa el ratón por el «?» para ver qué es cada una.
 
 - **Ventas, beneficio y caja libre:** las tres barras deberían crecer juntas. Si el beneficio crece y la caja libre no, el beneficio puede estar «maquillado» por partidas contables.
-- **BPA y PER:** el BPA (beneficio por acción) es lo que acaba moviendo la cotización a largo plazo. El PER histórico te dice cuánto ha pagado el mercado normalmente por cada dólar de beneficio.
+- **BPA:** el beneficio por acción es lo que acaba moviendo la cotización a largo plazo. Las barras rojas son años con pérdidas.
+- **PER histórico:** cuánto ha pagado el mercado cada año por cada dólar de beneficio. La línea discontinua es la mediana y el rombo naranja, el PER de hoy: por debajo de la línea, más barata que de costumbre.
 - **Márgenes:** márgenes altos y estables son la huella numérica de una ventaja competitiva. Si caen poco a poco, alguien le está comiendo terreno.
 - **Rentabilidad del capital:** ROIC y ROE por encima del 15 % durante años indican que la empresa gana mucho con lo que tiene invertido. El «ROIC ajustado I+D» trata el I+D como inversión (más justo para tecnológicas y farmacéuticas).
+- **Acciones en circulación:** si bajan, la empresa recompra (cada acción vale una parte mayor del negocio); si suben, diluye.
+
+Todas las cifras van en formato español (1.234,5) y cada gráfico indica su unidad junto al título.
 """,
     "historico": """
 **Para qué sirve:** ver la evolución de cualquier dato, con el mismo esquema que macrotrends.

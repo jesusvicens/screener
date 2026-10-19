@@ -56,7 +56,7 @@ inject_css()
 if _password_gate():
     pg_emp = st.Page(empresa.page, title="Empresa", icon=":material/domain:", url_path="empresa", default=True)
     pg_scr = st.Page(otras.screener_page, title="Screener", icon=":material/filter_alt:", url_path="screener")
-    pg_lot = st.Page(otras.lote_page, title="Lote", icon=":material/playlist_play:", url_path="lote")
+    pg_lot = st.Page(otras.lote_page, title="Análisis en lote", icon=":material/playlist_play:", url_path="lote")
     pg_mis = st.Page(otras.mis_analisis_page, title="Mis análisis", icon=":material/bookmark:", url_path="mis-analisis")
     pg_car = st.Page(otras.cartera_page, title="Cartera", icon=":material/account_balance_wallet:", url_path="cartera")
     st.session_state["_page_empresa"], st.session_state["_page_lote"] = pg_emp, pg_lot

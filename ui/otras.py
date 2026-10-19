@@ -9,7 +9,7 @@ import streamlit as st
 
 from terminal import pipeline, screener, storage
 from ui.ayuda import explica
-from ui.common import company_url, show_cols_table
+from ui.common import company_url, num, pct, show_cols_table
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _screen_table(base_stamp: float, mk_stamp: float, notas_stamp: float = 0.0):
@@ -100,8 +100,8 @@ def _screener_body():
     df = _screen_table(base_stamp, mk_stamp, screener.NOTAS_FILE.stat().st_mtime if screener.NOTAS_FILE.exists() else 0.0)
     Y = int(df["Año datos"].iloc[0])
     na_age = screener.notas_age_days()
-    c[0].caption(("" if na_age is None else f"Notas del examen financiero: hace {na_age:.0f} días · ") + f"{len(df):,} empresas · fundamentales del ejercicio {Y} (SEC, hace {(time.time() - base_stamp) / 86400:.1f} días) · "
-                 f"precios hace {mk_age or 0:.0f} h · {df['Precio'].notna().sum():,} con cotización")
+    c[0].caption(("" if na_age is None else f"Notas del examen financiero: hace {na_age:.0f} días · ") + f"{num(len(df))} empresas · fundamentales del ejercicio {Y} (SEC, hace {(time.time() - base_stamp) / 86400:.1f} días) · "
+                 f"precios hace {mk_age or 0:.0f} h · {num(df['Precio'].notna().sum())} con cotización")
 
     # Streamlit borra el estado de los controles al cambiar de página: lo restauramos desde una copia.
     sp = st.session_state.setdefault("_scr_persist", {})
@@ -167,7 +167,7 @@ def _screener_body():
             sp[f"scr_n_{m}"] = navg[m]
     df = screener.with_avg_growth(df, navg)
     res = screener.apply_filters(df, filters, exch, text, sectors, industries)
-    st.markdown(f"## Resultado · {len(res):,} empresas")
+    st.markdown(f"## Resultado · {num(len(res))} empresas")
     core = ["Empresa", "Sector", "Precio", "Capitalización (M$)", "PER", "Nota financiera"]
     default_cols = core + [m for m in mets if m not in core]
     for extra in ("CAGR ventas 5a", "CAGR BPA 5a", "ROE", "Margen operativo"):
@@ -348,11 +348,11 @@ def cartera_page():
             val["Margen de seguridad"] = val["Ticker"].map(lambda t: saved.get(t, {}).get("Margen de seguridad"))
             tot_v, tot_c = val["Valor (€)"].sum(), val["Coste total (€)"].sum()
             m = st.columns(4)
-            m[0].metric("Valor de la cartera", f"{tot_v:,.0f} €")
-            m[1].metric("Coste", f"{tot_c:,.0f} €")
-            m[2].metric("Plusvalía latente", f"{tot_v - tot_c:,.0f} €", f"{(tot_v / tot_c - 1):.1%}" if tot_c else None)
+            m[0].metric("Valor de la cartera", f"{num(tot_v, 0)} €")
+            m[1].metric("Coste", f"{num(tot_c, 0)} €")
+            m[2].metric("Plusvalía latente", f"{num(tot_v - tot_c, 0)} €", f"{pct(tot_v / tot_c - 1)}" if tot_c else None)
             ys = C.tax_year(res, date.today().year)["resumen"]
-            m[3].metric(f"Plusvalías realizadas {date.today().year}", f"{ys['Saldo neto (€)']:,.0f} €")
+            m[3].metric(f"Plusvalías realizadas {date.today().year}", f"{num(ys['Saldo neto (€)'], 0)} €")
             cols = ["Ticker", "Acciones", "Coste medio", "Precio actual", "Divisa", "Valor (€)", "Coste total (€)", "Plusvalía latente (€)",
                     "Rentabilidad", "Rentabilidad en €", "Peso", "Valor estimado", "Margen de seguridad", "Primera compra"]
             show_cols_table(val[cols].set_index("Ticker"), height=38 + 35 * len(val),
@@ -418,10 +418,10 @@ def cartera_page():
         tx = C.tax_year(res, y)
         r = tx["resumen"]
         m = st.columns(4)
-        m[0].metric("Saldo neto ganancias/pérdidas", f"{r['Saldo neto (€)']:,.2f} €")
-        m[1].metric("Ganancias", f"{r['Ganancias (€)']:,.2f} €")
-        m[2].metric("Pérdidas", f"{r['Pérdidas (€)']:,.2f} €")
-        m[3].metric("Dividendos brutos", f"{r['Dividendos brutos (€)']:,.2f} €", f"retención {r['Retenciones en origen (€)']:,.2f} €")
+        m[0].metric("Saldo neto ganancias/pérdidas", f"{num(r['Saldo neto (€)'], 2)} €")
+        m[1].metric("Ganancias", f"{num(r['Ganancias (€)'], 2)} €")
+        m[2].metric("Pérdidas", f"{num(r['Pérdidas (€)'], 2)} €")
+        m[3].metric("Dividendos brutos", f"{num(r['Dividendos brutos (€)'], 2)} €", f"retención {num(r['Retenciones en origen (€)'], 2)} €")
         st.markdown("## Transmisiones de acciones (FIFO)")
         if tx["ventas"].empty:
             st.info("No hay ventas en este ejercicio.")

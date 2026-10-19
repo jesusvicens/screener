@@ -8,7 +8,7 @@ import streamlit as st
 
 from terminal import listas, screener, storage
 from ui.ayuda import explica
-from ui.common import company_url, fmt_cell, show_cols_table
+from ui.common import company_url, fmt_cell, num, show_cols_table
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -114,7 +114,7 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
     key = "Prioridad" if orden.startswith("Prioridad") else orden
     cand = cand.sort_values(key, ascending=False, na_position="last")
 
-    st.markdown(f"## {len(cand):,} candidatas")
+    st.markdown(f"## {num(len(cand))} candidatas")
     with st.container(border=True):
         st.markdown(
             f"**Cómo se ordena.** Prioridad (0-10) = **{listas.PESO_NOTA:.0%} calidad** + **{listas.PESO_PRECIO:.0%} precio**.  \n"
@@ -217,7 +217,7 @@ def _mis_listas(df: pd.DataFrame, d: dict, gu: dict):
     for t, e in d["empresas"].items():
         p = idx.loc[t, "Precio"] if t in idx.index else None
         if e.get("objetivo") and p and p <= e["objetivo"]:
-            alerts.append(f"**{t}** ({p:,.2f} ≤ {e['objetivo']:,.2f})")
+            alerts.append(f"**{t}** ({num(p, 2)} ≤ {num(e['objetivo'], 2)})")
     if alerts:
         st.success("🔔 Han llegado a tu precio objetivo: " + ", ".join(alerts))
 

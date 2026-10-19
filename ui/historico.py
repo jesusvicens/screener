@@ -154,7 +154,7 @@ def _clean_ratio(r: pd.Series) -> pd.Series:
 
 # ------------------------------------------------------------------ gráficos
 def _layout(fig, h):
-    fig.update_layout(template="plotly_white", height=h, margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
+    fig.update_layout(template="terminal", height=h, margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
                       font=dict(family="Source Sans 3, Arial", size=12, color=TEXT), bargap=0.25,
                       hoverlabel=dict(bgcolor="#fff"))
     fig.update_xaxes(gridcolor="#eef0f3", linecolor="#c9ced6")

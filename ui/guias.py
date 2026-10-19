@@ -119,7 +119,7 @@ def _guia_vs_real(qs):
     lo_all = min(v for v in lo + [r for r in real if r is not None])
     hi_all = max(v for v in hi + [r for r in real if r is not None])
     pad = (hi_all - lo_all) * 0.15 or abs(hi_all) * 0.05
-    fig.update_layout(template="plotly_white", height=380, margin=dict(l=10, r=10, t=10, b=10), barmode="overlay",
+    fig.update_layout(template="terminal", height=380, margin=dict(l=10, r=10, t=10, b=10), barmode="overlay",
                       legend=dict(orientation="h", y=1.08), yaxis=dict(range=[lo_all - pad * 3, hi_all + pad],
                                                                        tickformat=".0%" if kind == "pct" else None))
     fig.update_xaxes(type="category")
@@ -169,7 +169,7 @@ def _guia_anual(qs):
     if fin:
         fig.add_hline(y=fin, line_dash="dot", line_color=GREEN, annotation_text=f"Resultado final {_fmt(fin, kind)}",
                       annotation_position="bottom right")
-    fig.update_layout(template="plotly_white", height=360, margin=dict(l=10, r=10, t=20, b=10), showlegend=False)
+    fig.update_layout(template="terminal", height=360, margin=dict(l=10, r=10, t=20, b=10), showlegend=False)
     fig.update_xaxes(type="category")
     st.plotly_chart(fig, width="stretch")
     df = pd.DataFrame([{k: v for k, v in r.items() if k != "_mid"} for r in rows]).set_index("Fecha")
@@ -294,7 +294,7 @@ def _xbrl(ca):
     fig = go.Figure()
     fig.add_bar(x=x, y=df["Ingresos"], marker_color=BLUE, name="Ingresos", text=[_fmt(v, "m") for v in df["Ingresos"]],
                 textposition="outside", textfont=dict(size=9))
-    fig.update_layout(template="plotly_white", height=320, margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
+    fig.update_layout(template="terminal", height=320, margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
     fig.update_xaxes(type="category")
     st.plotly_chart(fig, width="stretch")
     out = df.copy()
