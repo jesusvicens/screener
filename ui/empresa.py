@@ -258,6 +258,13 @@ def _save_bar(T, work, ca):
     if c1.button("💾 Guardar análisis", type="primary", width="stretch"):
         data = dict(work)
         data["resumen"] = {k: (float(v) if isinstance(v, (int, float)) else v) for k, v in pipeline.summary_row(ca).items()}
+        try:  # conserva lo que se guarda desde otras pestañas (p. ej. el dossier)
+            prev = storage.load(T) or {}
+            for k in ("dossier",):
+                if k in prev and k not in data:
+                    data[k] = prev[k]
+        except Exception:  # noqa: BLE001
+            pass
         try:
             msg = storage.save(T, data)
             st.session_state[f"saved_{T}"] = data
