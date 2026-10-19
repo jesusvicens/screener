@@ -11,6 +11,11 @@ on:
         description: "Recalcular también los fundamentales"
         type: boolean
         default: false
+  push:                         # al cambiar el propio proceso (la primera vez se ejecuta solo)
+    branches: [main]
+    paths:
+      - ".github/workflows/datos.yml"
+      - "scripts/datos_screener.py"
 
 permissions:
   contents: write
