@@ -67,7 +67,7 @@ def page():
         st.info("Abre primero el **Screener** una vez para descargar los datos de todas las empresas.")
         return
     gu = _guardados()
-    tab_rec, tab_lis = st.tabs(["Recomendadas para analizar", f"Mis listas ({len(d['empresas'])})"])
+    tab_rec, tab_lis = st.tabs(["Recomendadas para analizar", "Mis listas"], key="prio_tabs")
     with tab_rec:
         _recomendadas(df, d, gu)
     with tab_lis:
@@ -206,10 +206,11 @@ def _mis_listas(df: pd.DataFrame, d: dict, gu: dict):
             ts = [t.strip().upper() for t in txt.replace(";", ",").replace(" ", ",").split(",") if t.strip()]
             _guardar(listas.add(d, ts, g2), f"{len(ts)} añadidas a «{g2}»")
             st.rerun()
-    tabs = st.tabs([f"{g} ({counts[g]})" for g in grupos])
+    tabs = st.tabs(grupos, key="prio_listas_tabs")
     for g, tab in zip(grupos, tabs):
         with tab:
             tickers = listas.in_list(d, g)
+            st.caption(f"{len(tickers)} empresa(s) en «{g}».")
             if not tickers:
                 st.caption("Vacía.")
                 continue

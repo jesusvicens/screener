@@ -194,7 +194,7 @@ def page():
     _save_bar(T, work, ca)
 
     tabs = st.tabs(["Resumen", "Histórico", "Examen", "Estados financieros", "Modelo EPS", "ROIC", "Escenarios y valoración", "Riesgo",
-                    "Presentaciones SEC", "Notas"])
+                    "Presentaciones SEC", "Notas"], key="ficha_tabs")  # con key recuerda la pestaña al cambiar un dato
     with tabs[0]:
         _tab_resumen(ca)
     with tabs[1]:

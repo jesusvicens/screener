@@ -309,7 +309,7 @@ def cartera_page():
     rows = _load_cartera()
     st.caption(f"Almacenamiento: {storage.backend()}"
                + ("" if storage.backend() == "github" else " · ⚠ sin token de GitHub, lo que guardes aquí se pierde cuando la app se reinicia."))
-    tabs = st.tabs(["Posiciones", "Movimientos", "IRPF"])
+    tabs = st.tabs(["Posiciones", "Movimientos", "IRPF"], key="cartera_tabs")
 
     try:
         res = C.process(rows)
