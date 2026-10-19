@@ -74,11 +74,16 @@ def body():
         st.info("Abre primero el **Screener** una vez para descargar los datos de todas las empresas.")
         return
     gu = _guardados()
-    tab_rec, tab_lis = st.tabs(["Recomendadas para analizar", "Mis listas"], key="prio_tabs")
-    with tab_rec:
-        _recomendadas(df, d, gu)
-    with tab_lis:
-        _mis_listas(df, d, gu)
+    from ui import panel
+    secciones = [(":material/monitoring: Panel", lambda: panel.panel(df, d, gu)),
+                 (":material/recommend: Recomendadas para analizar", lambda: _recomendadas(df, d, gu)),
+                 (":material/list: Mis listas", lambda: _mis_listas(df, d, gu)),
+                 (":material/event: Calendario de resultados", lambda: panel.calendario_tab(df, d, gu))]
+    tabs = st.tabs([n for n, _ in secciones], key="prio_tabs", on_change="rerun")
+    for (n, fn), tb in zip(secciones, tabs):
+        if tb.open:
+            with tb:
+                fn()
 
 
 # ------------------------------------------------------------------ recomendadas

@@ -21,12 +21,14 @@ Todas las cifras van en formato español (1.234,5) y cada gráfico indica su uni
     "historico": """
 **Para qué sirve:** ver la evolución de cualquier dato, con el mismo esquema que macrotrends.
 
-- **Arriba, la categoría** (Precio, Ingresos y beneficio, Activos y pasivos, Márgenes, Ratios de precio, Otros ratios, Otras métricas) y **debajo, la métrica**.
+- **Arriba, la categoría** (Precio, Ingresos y beneficio, Activos y pasivos, Márgenes, Ratios de precio, Otros ratios, Dividendos y recompras, Otras métricas) y **debajo, la métrica**.
+- **Anual / Trimestral / Últimos 12 meses** (en ventas, beneficios, BPA, flujos de caja, recompras y dividendos): el trimestral enseña la estacionalidad y el último dato; los últimos 12 meses suman cuatro trimestres y adelantan el dato anual sin esperar al 10-K. Abajo, el crecimiento frente al mismo periodo del año anterior.
+- **Dividendos y recompras → Retorno al accionista:** dividendos + recompras de cada año frente al flujo de caja libre, con el % devuelto y la variación de acciones (verde = bajan, recompra).
 - **Cifras** (ventas, beneficio, balance…): barras por ejercicio y, debajo, el crecimiento de cada año (verde si sube, rojo si baja).
 - **Márgenes:** ventas y resultado en barras y el margen en línea; «Todos los márgenes» los compara juntos.
 - **Ratios de precio** (PER, P/V, P/VC, P/FCF): arriba la cotización diaria y abajo el ratio de cada día = precio / dato por acción del último ejercicio cerrado, con su mediana. Te dice si hoy está caro o barato frente a su propia historia.
 - **Precio:** cotización ajustada por splits con botones de periodo (1A, 3A, 5A, 10A, Todo) y tabla por año.
-- Debajo de cada gráfico, la tabla anual y un resumen (crecimientos a 1, 3, 5 y 10 años o medias). Fuente: 10-K de la SEC; precios de Yahoo/Stooq. De momento, datos anuales (no trimestrales).
+- Debajo de cada gráfico, la tabla anual y un resumen (crecimientos a 1, 3, 5 y 10 años o medias). Fuente: 10-K y 10-Q de la SEC; precios de Yahoo/Stooq.
 """,
     "examen": """
 **Para qué sirve:** tu filtro de calidad. Diez bloques: seis **cualitativos** (¿es un buen negocio, con buena dirección y futuro?) y cuatro **financieros** (¿los números lo confirman?).
@@ -125,6 +127,8 @@ Para cada año calcula el **PER de salida requerido** para ganar r. Si es menor 
 7. **Preguntas de supervivencia:** contéstalas antes de comprar.
 """,
     "filings": """
+**Buscar en sus documentos:** escribe una palabra o frase (en inglés) y ves en qué 10-K, 10-Q u 8-K aparece, cuántas veces por informe anual (para seguir un tema en el tiempo: «AI», «pricing», «competition»…) y los párrafos donde sale.
+
 **Presentaciones en la SEC.** **10-K:** informe anual auditado (la fuente principal). **10-Q:** trimestral. **8-K:** hechos relevantes (resultados, cambios en la dirección, adquisiciones). **DEF 14A:** convocatoria de la junta, con la retribución de los directivos: revisa si cobran por crecer o por crear valor por acción.
 """,
     "screener": """
@@ -139,10 +143,44 @@ Para cada año calcula el **PER de salida requerido** para ganar r. Si es menor 
     "prioridad": """
 **Para qué sirve:** decidir qué empresa analizar a continuación y llevar tus listas de seguimiento.
 
+- **Panel:** todas las empresas de tus listas y de tu cartera en una pantalla: precio, variación del día, del mes y del año, distancia al máximo de 52 semanas y a tu precio objetivo (si no has puesto uno, el precio máximo de compra de tu análisis), PER, nota y próximos resultados. Avisos arriba: 🔔 en precio objetivo y 📅 presentan en los próximos 14 días.
+- **Calendario de resultados:** próximas presentaciones de tus empresas agrupadas por semana. La fecha es estimada con el calendario de años anteriores (la SEC no publica fechas futuras): confírmala en su web.
+
 - **Recomendadas para analizar:** empresas con buena nota financiera (examen calculado cada semana para todas) que aún no tienes en tus listas ni analizadas. **Prioridad** (0-10) = 70 % nota financiera + 30 % precio relativo: la candidata con mayor rentabilidad por flujo de caja libre (FCF / capitalización) saca 10 en precio y la más cara, 0. Las columnas **Puntos por nota**, **Puntos por precio** y **Motivo** explican la posición de cada una, y abajo puedes ver el detalle completo de cualquiera. Es un orden para empezar, no una recomendación de compra.
 - **Mis listas:** A analizar, Analizadas, Para más adelante, Caras (esperar precio), Descartadas y las que crees tú. Cambia la columna «Lista» para mover una empresa, escribe un comentario o un **precio objetivo** y pulsa «Guardar cambios». Cuando el precio llega a tu objetivo, sale un aviso 🔔 arriba.
 - **Precio máx. sugerido:** si tienes la empresa analizada y guardada, tu valor estimado × (1 − tu margen de seguridad). Puedes copiarlo como precio objetivo.
 - También puedes añadir empresas desde la ficha (desplegable «Lista» junto a «Guardar análisis») y desde el resultado del screener.
+""",
+    "segmentos": """
+**Para qué sirve:** saber de dónde vienen las ventas: por negocio, por producto o servicio y por geografía, y cómo crece cada parte.
+
+- Datos del XBRL de los tres últimos 10-K (cada uno trae tres años), con los nombres que usa la empresa.
+- **Gráfico de líneas:** evolución de cada parte. **Barras:** su peso en las ventas del último año.
+- **Tabla:** cifras en millones, crecimiento del último año, CAGR a 3 años y peso. Si la empresa da el resultado por segmento, verás también el margen de cada uno.
+- Si reorganiza sus segmentos, los años antiguos pueden no ser comparables. En geografía a veces se dan a la vez una región y un país dentro de ella.
+""",
+    "comparables": """
+**Para qué sirve:** ver si la empresa es mejor o peor que sus competidores en crecimiento, márgenes, rentabilidad, deuda y precio.
+
+- **Comparables:** propuesta automática (misma industria del screener de Nasdaq y ventas parecidas). Cámbialos a tu gusto y pulsa «Guardar»: se quedan guardados con la empresa.
+- **Dónde queda:** su puesto en cada métrica (1.º = la mejor; en PER, P/FCF y EV/EBIT, la más barata) y la mediana del grupo.
+- **Gráficos:** tu empresa en azul y la mediana en línea discontinua. Datos del último ejercicio del screener (precios del cierre de anoche).
+""",
+    "bandas": """
+**Para qué sirve:** responder dos preguntas rápidas antes de los escenarios: ¿está cara o barata frente a su propia historia? y ¿qué rentabilidad sale con cada combinación de crecimiento y múltiplo?
+
+- **BPA normalizado:** ventas del último año × margen neto medio de los últimos 5 años ÷ acciones. Si el último BPA se aleja mucho del normalizado (un año excepcional), valora con los dos.
+- **Bandas de PER y de P/FCF:** percentiles 10, 25, 50, 75 y 90 del ratio diario de toda la historia disponible. «PER hoy · percentil 3» = solo el 3 % de los días estuvo más barata. La tabla traduce cada percentil a precio por acción y el gráfico dibuja esas bandas sobre la cotización.
+- **Sensibilidad:** rentabilidad anual si el BPA crece a cada ritmo (filas) y la vendes a cada PER (columnas) dentro de los años elegidos; con dividendos si reparte. Verde = supera tu rentabilidad exigida; rojo = pierdes dinero. La columna con la mediana histórica de PER es el caso «normal».
+""",
+    "propiedad": """
+**Para qué sirve:** ver qué hacen con su dinero quienes mejor conocen la empresa (sus directivos) y qué inversores de referencia la tienen.
+
+- **Directivos (formulario 4):** cada compra o venta de directivos, consejeros y accionistas >10 % de los dos últimos años. Lo importante son las **compras en mercado**, sobre todo si compran varios a la vez. Las ventas suelen ser por impuestos o diversificación, y las del **plan 10b5-1** están programadas de antemano. En el gráfico, triángulos verdes (compras) y rojos (ventas) sobre la cotización; el tamaño es el importe.
+- **Superinversores (13F):** si la tienen fondos como Berkshire, Akre, Fundsmith, Markel, Oaktree, Himalaya o TCI, con qué peso y si la han comprado, subido, reducido o vendido el último trimestre. El 13F es una foto del cierre de cada trimestre que se publica hasta 45 días después: puede haber cambiado. Se actualiza cada semana.
+""",
+    "bitacora": """
+**Para qué sirve:** tener un diario de cada empresa con fecha: la tesis inicial, qué cambió en cada resultado, por qué compraste o vendiste. Así ves cómo evoluciona tu opinión y si acertaste.
 """,
     "lote": """
 **Para qué sirve:** pasar tu modelo completo (examen financiero, cuatro escenarios, cobertura y margen de seguridad) por una lista de empresas de golpe y ordenarlas. Usa tus análisis guardados si existen; si no, las propuestas automáticas.

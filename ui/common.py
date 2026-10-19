@@ -112,6 +112,12 @@ GROWTH_HINTS = ("crec", "cagr", "variación", "var.", "δ", "sorpresa", "frente 
 POS, NEG, BOLD_BG = "#1e7b4a", "#b42318", "#eef3fa"
 
 
+def is_inverse(label) -> bool:
+    """Métricas en las que bajar es bueno (p. ej. número de acciones: bajar = recompra)."""
+    l = str(label).lower()
+    return "acciones" in l or "deuda" in l
+
+
 def is_growth(label) -> bool:
     l = str(label).lower()
     return any(h in l for h in GROWTH_HINTS)
@@ -179,7 +185,7 @@ def show_rows_table(df: pd.DataFrame, kinds: dict | None = None, height: int | N
             c = f"font-weight: 700; background-color: {BOLD_BG};" if b else ""
             if _isnum(v):
                 if growth.get(r.name):
-                    c += _sign_css(v)
+                    c += _sign_css(-v) if is_inverse(r.name) else _sign_css(v)
                 elif v < 0:
                     c += f" color: {NEG};"
             elif isinstance(v, str) and v[:1] in ("-", "−") and len(v) > 1 and v[1:2].isdigit():
@@ -224,6 +230,8 @@ def show_cols_table(df: pd.DataFrame, height: int | None = None, kinds: dict | N
     out = df.copy()
     out = out.loc[:, ~out.columns.duplicated()]
     for c in out.columns:
+        if c not in column_config and out[c].dtype == object and all((x is None) or _isnum(x) or x != x for x in out[c]):
+            out[c] = pd.to_numeric(out[c], errors="coerce")  # números con huecos (None) → numérica, para que no salga «None»
         if c not in column_config and _mixed(out[c]):
             k = kinds.get(c) or kind_of(c)
             out[c] = [fmt_cell(v, k) for v in out[c]]
@@ -234,7 +242,7 @@ def show_cols_table(df: pd.DataFrame, height: int | None = None, kinds: dict | N
         k = kinds.get(c) or kind_of(c)
         sty = sty.format(lambda v, k=k: fmt_cell(v, k), subset=[c], na_rep="—")
         if is_growth(c) and k == "pct":
-            sty = sty.map(_sign_css, subset=[c])
+            sty = sty.map((lambda v: _sign_css(-v) if _isnum(v) else "") if is_inverse(c) else _sign_css, subset=[c])
     st.dataframe(sty, width="stretch", height=height or min(38 + 35 * len(out), 700), column_config=column_config or None)
 
 

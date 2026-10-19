@@ -2,7 +2,7 @@
 
 - Precios, capitalización y sector de todas las acciones (screener público de Nasdaq): cada día.
 - Fundamentales de la SEC para el screener: si los publicados tienen más de 6 días (o con --forzar).
-Escribe en --out: screener_market.parquet, screener_base.parquet y meta.json (fechas de generación).
+Escribe en --out: screener_market.parquet, screener_base.parquet, superinversores.parquet y meta.json (fechas de generación).
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from terminal import remoto, screener  # noqa: E402
+from terminal import remoto, screener, superinversores  # noqa: E402
 
 
 def main():
@@ -28,7 +28,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     prev = remoto.public_meta()
-    meta = {"market": None, "base": prev.get("base")}
+    meta = {"market": None, "base": prev.get("base"), "superinversores": prev.get("superinversores")}
 
     mk = screener.refresh_market(progress=lambda p, m: print(f"  {m}"))
     if mk is None or mk.empty:
@@ -52,6 +52,23 @@ def main():
         base.to_parquet(out / "screener_base.parquet")
         meta["base"] = now
         print(f"Fundamentales: {len(base):,} empresas recalculadas")
+    # Carteras 13F de superinversores: cada semana (se presentan 45 días después de cada trimestre).
+    si_age_d = remoto._age_h(prev.get("superinversores")) / 24
+    raw = None if (a.forzar or si_age_d > 6) else remoto.public_file("superinversores.parquet")
+    if raw:
+        (out / "superinversores.parquet").write_bytes(raw)
+    else:
+        try:
+            si = superinversores.build()
+            if not si.empty:
+                si.to_parquet(out / "superinversores.parquet")
+                meta["superinversores"] = now
+                print(f"Superinversores: {si['fondo'].nunique()} fondos")
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠ Superinversores: {e}")
+            raw = remoto.public_file("superinversores.parquet")
+            if raw:
+                (out / "superinversores.parquet").write_bytes(raw)
     (out / "meta.json").write_text(json.dumps(meta, indent=1))
     print(meta)
 

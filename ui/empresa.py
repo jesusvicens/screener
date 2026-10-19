@@ -205,22 +205,43 @@ def page():
         explica("guias")
         guias.tab(T, ca)
 
-    # Ordenadas por el flujo de trabajo: datos → análisis → valoración → fuentes. Solo se dibuja la pestaña abierta (más rápido).
-    pestañas = [
-        (":material/dashboard: Resumen", lambda: _tab_resumen(ca)),
-        (":material/show_chart: Histórico", lambda: _tab_historico(T, ca)),
-        (":material/table_chart: Estados financieros", lambda: _tab_estados(ca)),
-        (":material/flag: Guías y resultados", _guias),
-        (":material/checklist: Examen", lambda: _tab_examen(T, ca)),
-        (":material/menu_book: Cualitativo y documentos", _cual),
-        (":material/trending_up: ROIC", lambda: _tab_roic(T, ca)),
-        (":material/calculate: Modelo EPS", lambda: _tab_eps(ca)),
-        (":material/balance: Escenarios y valoración", lambda: _tab_escenarios(T, ca)),
-        (":material/warning: Riesgo", lambda: _tab_riesgo(T, ca)),
-        (":material/description: SEC", lambda: _tab_filings(ca)),
-        (":material/edit_note: Notas", lambda: _tab_notas(T, ca)),
-    ]
-    tabs = st.tabs([n for n, _ in pestañas], key="ficha_tabs", on_change="rerun")  # recuerda la pestaña
+    def _mod(name, *args):
+        import importlib
+        return lambda: importlib.import_module(f"ui.{name}").tab(*args)
+
+    # Dos niveles: primero el grupo (datos → análisis → valoración → propiedad y fuentes) y dentro, sus pestañas.
+    # Solo se dibuja la pestaña abierta (más rápido) y cada grupo recuerda la suya.
+    grupos = {
+        ":material/bar_chart: Datos": [
+            (":material/dashboard: Resumen", lambda: _tab_resumen(ca)),
+            (":material/show_chart: Histórico", lambda: _tab_historico(T, ca)),
+            (":material/table_chart: Estados financieros", lambda: _tab_estados(ca)),
+            (":material/pie_chart: Segmentos", _mod("segmentos", T, ca)),
+            (":material/flag: Guías y resultados", _guias),
+        ],
+        ":material/search: Análisis": [
+            (":material/checklist: Examen", lambda: _tab_examen(T, ca)),
+            (":material/menu_book: Cualitativo y documentos", _cual),
+            (":material/groups: Comparables", _mod("comparables", T, ca)),
+            (":material/trending_up: ROIC", lambda: _tab_roic(T, ca)),
+            (":material/calculate: Modelo EPS", lambda: _tab_eps(ca)),
+        ],
+        ":material/balance: Valoración": [
+            (":material/stacked_line_chart: Bandas y sensibilidad", _mod("bandas", T, ca)),
+            (":material/balance: Escenarios y valoración", lambda: _tab_escenarios(T, ca)),
+            (":material/warning: Riesgo", lambda: _tab_riesgo(T, ca)),
+        ],
+        ":material/folder_open: Propiedad y fuentes": [
+            (":material/badge: Directivos y fondos", _mod("propiedad", T, ca)),
+            (":material/description: SEC", lambda: _tab_filings(ca)),
+            (":material/edit_note: Notas", lambda: _tab_notas(T, ca)),
+        ],
+    }
+    if st.session_state.get("ficha_grupo") not in grupos:
+        st.session_state["ficha_grupo"] = next(iter(grupos))
+    g = st.segmented_control("Sección", list(grupos), key="ficha_grupo", label_visibility="collapsed", width="stretch", required=True)
+    pestañas = grupos[g or next(iter(grupos))]
+    tabs = st.tabs([n for n, _ in pestañas], key=f"ficha_tabs_{list(grupos).index(g) if g in grupos else 0}", on_change="rerun")
     for (n, fn), tb in zip(pestañas, tabs):
         if tb.open:
             with tb:
@@ -292,9 +313,9 @@ def _save_bar(T, work, ca):
         data["resumen"] = {k: (float(v) if isinstance(v, (int, float)) else v) for k, v in pipeline.summary_row(ca).items()}
         try:  # conserva lo que se guarda desde otras pestañas (p. ej. el dossier)
             prev = storage.load(T) or {}
-            for k in ("dossier", "guias"):
-                if k in prev and k not in data:
-                    data[k] = prev[k]
+            for k, v in prev.items():  # dossier, guías, comparables, bitácora…
+                if k not in data:
+                    data[k] = v
         except Exception:  # noqa: BLE001
             pass
         try:
@@ -803,6 +824,9 @@ def _tab_riesgo(T, ca):
 
 def _tab_filings(ca):
     explica("filings")
+    from ui import sec_busqueda
+    sec_busqueda.box(ca)
+    st.markdown("## Últimas presentaciones")
     try:
         fl = _filings(ca.fin.cik)
     except Exception as e:  # noqa: BLE001
@@ -818,9 +842,12 @@ def _tab_filings(ca):
 
 
 def _tab_notas(T, ca):
-    st.text_area("Tesis (modelo de negocio, ventaja competitiva, por qué la entiendo)", key=_key(T, "tesis"), height=220)
-    st.text_area("Seguimiento (resultados, cambios en la dirección, guía…)", key=_key(T, "seguimiento"), height=180)
-    st.caption("Se guarda con el botón «Guardar análisis».")
+    from ui import bitacora
+    bitacora.tab(T, ca)
+    with st.expander("Tesis y seguimiento (texto libre)", expanded=False):
+        st.text_area("Tesis (modelo de negocio, ventaja competitiva, por qué la entiendo)", key=_key(T, "tesis"), height=220)
+        st.text_area("Seguimiento (resultados, cambios en la dirección, guía…)", key=_key(T, "seguimiento"), height=180)
+        st.caption("Se guarda con el botón «Guardar análisis».")
 
 
 def _excel(ca) -> bytes:

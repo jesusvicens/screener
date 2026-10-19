@@ -3,3 +3,4 @@ __pycache__/
 data/cache/
 .streamlit/secrets.toml
 .venv/
+data/analisis/*.json

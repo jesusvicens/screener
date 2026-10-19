@@ -48,9 +48,12 @@ MENU: list[tuple[str, list[tuple[str, str, str, str]]]] = [
         ("Liquidez corriente", "_current", "x", "level"), ("Prueba ácida", "_quick", "x", "level"),
         ("Deuda / patrimonio", "_de", "x", "level"), ("ROE", "_roe", "pct", "level"), ("ROA", "_roa", "pct", "level"),
         ("ROIC", "_roic", "pct", "level"), ("Rentabilidad s/ patrimonio tangible", "_rote", "pct", "level")]),
+    ("Dividendos y recompras", [
+        ("Retorno al accionista", "_returns", "m", "returns"), ("Dividendo por acción", "_dps", "ps", "flow"),
+        ("Rentabilidad por dividendo", "_dy", "pct", "level"), ("Payout", "_payout", "pct", "level"),
+        ("Recompras", "buybacks", "m", "flow"), ("Dividendos pagados", "_divs", "m", "flow"),
+        ("Rentabilidad para el accionista", "_shy", "pct", "level"), ("Acciones en circulación", "shares_diluted", "sh", "flow")]),
     ("Otras métricas", [
-        ("Dividendo por acción", "_dps", "ps", "flow"), ("Rentabilidad por dividendo", "_dy", "pct", "level"),
-        ("Payout", "_payout", "pct", "level"), ("Recompras", "buybacks", "m", "flow"),
         ("Remuneración en acciones", "sbc", "m", "flow"), ("I+D", "rnd", "m", "flow"),
         ("Tipo impositivo efectivo", "_tax", "pct", "level")]),
 ]
@@ -113,6 +116,14 @@ def series(ca, key: str) -> list:
         return [_d(g("taxes", y), g("pretax", y)) if (g("pretax", y) or 0) > 0 else None for y in ys]
     if key == "buybacks":
         return [abs(v) if v is not None else None for v in f.series("buybacks")]
+    if key == "_divs":
+        return [abs(v) if v is not None else None for v in f.series("dividends")]
+    if key == "_shy":  # (dividendos + recompras) / capitalización media del año
+        out = []
+        for y, d, b in zip(ys, series(ca, "_divs"), series(ca, "buybacks")):
+            p, sh = ca.avg_prices.get(y), g("shares_diluted", y)
+            out.append(_d((d or 0) + (b or 0), p * sh) if (p and sh) else None)
+        return out
     return f.series(key)
 
 
@@ -320,6 +331,76 @@ def _price_table(h: pd.Series):
 
 
 # ------------------------------------------------------------------ pestaña
+# Métricas con versión trimestral (columna de terminal.trimestres)
+QMAP = {"revenue": "Ingresos", "gross_profit": "Beneficio bruto", "operating_income": "Resultado operativo", "net_income": "Beneficio neto",
+        "eps_diluted": "BPA GAAP", "ocf": "Flujo de caja operativo", "fcf": "Flujo de caja libre", "buybacks": "Recompras",
+        "_divs": "Dividendos", "shares_diluted": "Acciones diluidas"}
+MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _quarterly(cik: int):
+    from terminal import sec, trimestres
+    q = trimestres.quarterly(sec.company_facts(cik), n_years=10)
+    return q, trimestres.ttm(q)
+
+
+def _qlabel(d) -> str:
+    return f"{MESES[d.month - 1]} {d:%y}"
+
+
+def _chart_quarterly(labels, vals, kind, label, growth_label):
+    gr = [None] * 4 + [((b / a - 1) if (a not in (None, 0) and b is not None and a == a and b == b and a > 0) else None)
+                       for a, b in zip(vals, vals[4:])]
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.72, 0.28], vertical_spacing=0.06)
+    fig.add_bar(x=labels, y=vals, marker_color=BLUE, hovertemplate="%{x}: %{y:,.2f}<extra>" + label + "</extra>", row=1, col=1)
+    fig.add_bar(x=labels, y=gr, marker_color=[GREEN if (g or 0) >= 0 else RED for g in gr],
+                hovertemplate="%{x}: %{y:.1%}<extra>" + growth_label + "</extra>", row=2, col=1)
+    fig.update_yaxes(tickformat=_yfmt(kind), title_text=label, title_font=dict(size=11), row=1, col=1)
+    fig.update_yaxes(tickformat=".0%", title_text=growth_label, title_font=dict(size=11), row=2, col=1)
+    fig.update_xaxes(type="category")
+    return _layout(fig, 520), gr
+
+
+def _quarter_view(ca, key, kind, label, freq):
+    try:
+        q, t = _quarterly(int(ca.fin.cik))
+    except Exception as e:  # noqa: BLE001
+        st.warning(f"No he podido leer los trimestres: {e}")
+        return
+    d = q if freq == "Trimestral" else t
+    col = QMAP[key]
+    if d is None or d.empty or col not in d or d[col].dropna().empty:
+        st.info("La SEC no tiene este dato por trimestres para esta empresa.")
+        return
+    s = d[col].dropna()
+    labels = [_qlabel(x) for x in s.index]
+    gl = "Crec. interanual"
+    fig, gr = _chart_quarterly(labels, list(s.values), kind, label, gl)
+    note = ("Cada barra es un trimestre (fecha de cierre). El 4.º trimestre = año fiscal − 9 meses; los flujos de caja de los 10-Q "
+            "son acumulados y se restan." if freq == "Trimestral" else
+            "Cada barra suma los 4 trimestres anteriores a esa fecha (últimos 12 meses): suaviza la estacionalidad y adelanta el dato anual.")
+    st.markdown(f"<div class='mt-sub'>{note} Abajo, crecimiento frente al mismo periodo del año anterior.</div>", unsafe_allow_html=True)
+    st.plotly_chart(fig, width="stretch")
+    tb = pd.DataFrame({"Cierre": [x.strftime("%d/%m/%Y") for x in s.index], label: s.values, gl: gr}).iloc[::-1].set_index("Cierre")
+    show_cols_table(tb, height=min(38 + 35 * len(tb), 520), kinds={label: kind if kind != "sh" else "m", gl: "pct"})
+
+
+def _chart_returns(ca, ys):
+    divs, buys, fcf = series(ca, "_divs"), series(ca, "buybacks"), series(ca, "fcf")
+    fig = go.Figure()
+    fig.add_bar(x=ys, y=divs, name="Dividendos", marker_color="#2e8b57", hovertemplate="%{x}: %{y:,.0f} M<extra>Dividendos</extra>")
+    fig.add_bar(x=ys, y=buys, name="Recompras", marker_color=BLUE, hovertemplate="%{x}: %{y:,.0f} M<extra>Recompras</extra>")
+    fig.add_scatter(x=ys, y=fcf, name="Flujo de caja libre", mode="lines+markers", line=dict(color=TEXT, width=2, dash="dot"),
+                    marker=dict(size=8), hovertemplate="%{x}: %{y:,.0f} M<extra>FCF</extra>")
+    fig.update_layout(barmode="stack")
+    fig.update_yaxes(tickformat=",.0f", title_text="Millones", title_font=dict(size=11))
+    fig.update_xaxes(type="category")
+    _layout(fig, 460)
+    fig.update_layout(showlegend=True, legend=dict(orientation="h", y=1.08, x=0), hovermode="x unified")
+    return fig, divs, buys, fcf
+
+
 def tab(T: str, ca, key_fn):
     st.markdown(CSS, unsafe_allow_html=True)
     f = ca.fin
@@ -421,6 +502,33 @@ def tab(T: str, ca, key_fn):
         with c2:
             _summary(mg, "pct", label)
         return
+
+    if chart == "returns":
+        fig, divs, buys, fcf = _chart_returns(ca, ys)
+        st.markdown("<div class='mt-sub'>Lo que la empresa devuelve al accionista cada año (dividendos + recompras) frente al flujo de caja "
+                    "libre que genera. Si las barras superan la línea, devuelve más de lo que genera (con deuda o caja acumulada).</div>",
+                    unsafe_allow_html=True)
+        st.plotly_chart(fig, width="stretch")
+        sh = series(ca, "shares_diluted")
+        tot = [(d or 0) + (b or 0) for d, b in zip(divs, buys)]
+        df = pd.DataFrame({"Año fiscal": ys, "Dividendos": divs, "Recompras": buys, "Total devuelto": tot, "Flujo de caja libre": fcf,
+                           "% del FCF devuelto": [_d(t, x) if (x or 0) > 0 else None for t, x in zip(tot, fcf)],
+                           "Dividendo por acción": series(ca, "_dps"), "Acciones diluidas (M)": sh,
+                           "Var. acciones": [None] + [_d(b, a) - 1 if _d(b, a) is not None else None for a, b in zip(sh, sh[1:])],
+                           "Rentabilidad para el accionista": series(ca, "_shy")}).iloc[::-1].set_index("Año fiscal")
+        show_cols_table(df, height=38 + 35 * len(df), kinds={"Dividendos": "m", "Recompras": "m", "Total devuelto": "m",
+                                                              "Flujo de caja libre": "m", "% del FCF devuelto": "pct",
+                                                              "Dividendo por acción": "ps", "Acciones diluidas (M)": "m",
+                                                              "Var. acciones": "pct", "Rentabilidad para el accionista": "pct"})
+        st.caption("Var. acciones: verde cuando bajan (recompra), rojo cuando suben (dilución).")
+        return
+
+    if chart == "flow" and key in QMAP:
+        freq = st.segmented_control("Periodo", ["Anual", "Trimestral", "Últimos 12 meses"], default="Anual",
+                                    key=key_fn(T, "mt_freq"), label_visibility="collapsed") or "Anual"
+        if freq != "Anual":
+            _quarter_view(ca, key, kind, label, freq)
+            return
 
     vals = series(ca, key)
     if chart == "flow":

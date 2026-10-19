@@ -64,7 +64,7 @@ def screener_page():
                 unsafe_allow_html=True)
     st.markdown("<span class='subtle'>SCREENER · TODAS LAS COTIZADAS DE EE. UU.</span>", unsafe_allow_html=True)
     st.markdown("# Screener")
-    t_scr, t_pri = st.tabs(["Screener", "Prioridad y mis listas"], key="scr_main", on_change="rerun")
+    t_scr, t_pri = st.tabs(["Screener", "Panel, prioridad y listas"], key="scr_main", on_change="rerun")
     if t_scr.open:
         with t_scr:
             _screener_body()

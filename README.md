@@ -12,12 +12,19 @@ Terminal personal para analizar cotizadas de EE. UU. con tu propio modelo (el Ex
 | Página | Qué hace |
 |---|---|
 | **Empresa** | Ficha con tus hojas: Histórico estilo macrotrends (precio, ingresos y beneficio, activos y pasivos, márgenes, ratios de precio diarios, otros ratios y métricas), Examen (43 preguntas, misma puntuación), Estados financieros, Modelo EPS (+ tu modelo de Buffettología), ROIC (+ I+D capitalizado), Escenarios y valoración (fase, 4 escenarios, proyección a 10 años, test de cobertura, margen de seguridad, ventana de horizontes, test de exposición), presentaciones en la SEC y notas. Botón para guardar y exportar a Excel. |
+| **Ficha: navegación** | Cuatro secciones arriba (Datos · Análisis · Valoración · Propiedad y fuentes) y sus pestañas debajo. Cabecera con mini-gráficos (precio 1 año, PER frente a su mediana, ventas), cifras en formato español. |
+| **Segmentos** (ficha) | Ventas por negocio, producto y geografía de los últimos 10-K (XBRL dimensional): evolución, peso, crecimiento y margen por segmento si lo publican. |
+| **Comparables** (ficha) | Competidores propuestos (misma industria y tamaño) y editables; puesto de la empresa en cada métrica, tabla con la mediana del grupo y gráficos. |
+| **Bandas y sensibilidad** (ficha) | BPA normalizado; percentiles históricos de PER y P/FCF con su precio equivalente y gráfico de bandas; tabla de rentabilidad anual por crecimiento del BPA × PER de salida (con dividendos). |
+| **Directivos y fondos** (ficha) | Compras y ventas de directivos (formularios 4, últimos 2 años, con planes 10b5-1) sobre la cotización, y superinversores que la tienen según sus 13F (24 fondos: Berkshire, Akre, Fundsmith, Markel, Oaktree, Himalaya, TCI…) con su peso y el cambio del trimestre. |
+| **SEC y Notas** (ficha) | Buscador de texto completo en todos sus documentos de la SEC (menciones por informe anual y fragmentos). Bitácora con fecha (tesis, resultados, compras, ventas…). |
+| **Histórico** (ficha) | Además de anual: vista trimestral y últimos 12 meses, y la categoría «Dividendos y recompras» (retorno al accionista frente al FCF). |
 | **Riesgo** (pestaña de la ficha) | Tu método «Parte II · El riesgo»: BPA y precio de salida a 5 y 10 años, distribución de valores futuros, test de cobertura con probabilidades de prueba (cola izquierda engordada), ventana de horizontes, valor estimado y tabla de precios de compra, test de exposición por perfil de inversor (editable), preguntas de supervivencia y conclusión redactada. |
 | **Screener** | Estilo macrotrends sobre **todas** las cotizadas (~5.300 con datos): 51 métricas (crecimientos de ventas, BPA, beneficio, FCF y patrimonio a 1/3/5 años, crecimiento medio anual con los años que elijas (2-10), consistencia, márgenes, ROE/ROA/ROIC, salud, política de capital y valoración: PER, PEG, P/Ventas, P/VC, P/FCF, EV/EBIT, EV/EBITDA, rentabilidades). Filtros con mínimo y máximo por cualquier métrica, sector, industria, mercado y búsqueda; plantillas (Fisher/Munger, crecimiento de BPA, compounders baratos…) y las tuyas propias; columnas y orden a elegir; CSV; enviar a la ficha o al lote. Fundamentales de la SEC (≈1-2 min, caché semanal); precios, capitalización y sector del screener público de Nasdaq (una llamada, caché diaria). |
 | **Lote** | Pasa el modelo completo por una lista de tickers (o por el resultado del screener) y ordena por margen de seguridad. |
 | **Cartera** | Tus movimientos (compras, ventas, dividendos, splits) a mano o importados del extracto CSV de Interactive Brokers; posiciones con valor actual en divisa y en euros, plusvalía latente y enlace a tu valoración; pestaña IRPF con las transmisiones por FIFO en euros (tipo de cambio del BCE de cada fecha), aviso de la regla de los dos meses, dividendos con retención en origen y Excel para la declaración. |
 | **Mis análisis** | Las empresas que has guardado, con su nota y su valoración del día en que guardaste. |
-| **Prioridad** (pestaña del Screener) | Qué analizar primero: empresas con mejor nota financiera que aún no has mirado, ordenadas por prioridad (70 % nota + 30 % precio relativo por rentabilidad FCF). Y tus listas de seguimiento (A analizar, Analizadas, Para más adelante, Caras, Descartadas y las tuyas; una empresa puede estar en varias) con comentario, precio objetivo y aviso cuando llega a ese precio. Se añaden empresas desde aquí, desde la ficha o desde el screener. |
+| **Panel, prioridad y listas** (pestaña del Screener) | **Panel** con tus listas y tu cartera (precio, variaciones, distancia al objetivo, próximos resultados y avisos) y **calendario de resultados** por semanas (fecha estimada con el patrón de cada empresa). Qué analizar primero: empresas con mejor nota financiera que aún no has mirado, ordenadas por prioridad (70 % nota + 30 % precio relativo por rentabilidad FCF). Y tus listas de seguimiento (A analizar, Analizadas, Para más adelante, Caras, Descartadas y las tuyas; una empresa puede estar en varias) con comentario, precio objetivo y aviso cuando llega a ese precio. Se añaden empresas desde aquí, desde la ficha o desde el screener. |
 
 ### Cómo funciona el examen
 - Bloques cualitativos (Operativo, Producto, Dirección, Estrategia, Valores, Sector): los contestas tú. En la pestaña hay un texto listo para pegar en tu chat de Claude y trabajarlos ahí.
@@ -47,6 +54,7 @@ transcripción guardada en tu OneDrive. Las guías se extraen de las notas de pr
 ## Datos preparados cada noche
 Para que la app abra rápido aunque Streamlit la haya reiniciado (su disco se borra al dormirse):
 - **Screener** (datos públicos): la GitHub Action «Datos del screener» publica cada noche, de lunes a viernes, precios y sectores (cada día) y fundamentales (cada semana) en la rama `datos` de este repo. La app los lee al arrancar.
+- **Superinversores (13F)**: la misma Action prepara cada semana las carteras de los 24 fondos seguidos (`superinversores.parquet`).
 - **Fichas de tus empresas** (analizadas, en listas o en cartera): la Action «Fichas de mis empresas» de tu repo privado de datos guarda cada noche sus datos de la SEC y su cotización en la rama `fichas`. La ficha los lee con tu `GITHUB_TOKEN`; si una empresa no está ahí (o el dato tiene más de 36 h), la descarga de la SEC/Yahoo como siempre.
 Las dos ramas se reescriben cada noche sin historial, así que no engordan los repos.
 
@@ -96,5 +104,10 @@ terminal/riesgo.py     análisis de riesgo (Parte II)
 terminal/exam.py       examen, propuestas automáticas y puntuación
 terminal/screener.py   screener de todo el universo
 terminal/storage.py    guardado local o en GitHub
+terminal/trimestres.py trimestres y últimos 12 meses (XBRL 10-Q/10-K)
+terminal/segmentos.py  ventas por segmento, producto y geografía (XBRL dimensional)
+terminal/comparables.py, bandas.py   comparables; bandas de PER/PFCF, BPA normalizado y sensibilidad
+terminal/insiders.py, superinversores.py   formularios 4 y carteras 13F
+terminal/calendario.py, busqueda.py    fechas de resultados; búsqueda de texto completo en la SEC
 ui/                    páginas
 ```
