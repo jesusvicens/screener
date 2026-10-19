@@ -64,6 +64,17 @@ def screener_page():
                 unsafe_allow_html=True)
     st.markdown("<span class='subtle'>SCREENER · TODAS LAS COTIZADAS DE EE. UU.</span>", unsafe_allow_html=True)
     st.markdown("# Screener")
+    t_scr, t_pri = st.tabs(["Screener", "Prioridad y mis listas"], key="scr_main", on_change="rerun")
+    if t_scr.open:
+        with t_scr:
+            _screener_body()
+    if t_pri.open:
+        with t_pri:
+            from ui import prioridad
+            prioridad.body()
+
+
+def _screener_body():
     explica("screener")
     base = screener.load_base(7)
     mk, mk_age = screener.load_market()

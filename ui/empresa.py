@@ -424,10 +424,21 @@ def _tab_estados(ca):
     ps_kinds = {F.LABELS[k]: "ps" for k in ("eps_basic", "eps_diluted")}
     m_kinds = {F.LABELS[k]: "m" for k in F.LABELS}
     m_kinds.update(ps_kinds)
+    L = F.LABELS
+    bold = {L[k] for k in ("revenue", "gross_profit", "operating_income", "pretax", "net_income", "ebitda", "eps_diluted",
+                           "current_assets", "lt_assets", "total_assets", "current_liabilities", "lt_liabilities",
+                           "total_liabilities", "equity", "liabilities_equity", "ocf", "icf", "fcf_fin", "net_cash_flow", "fcf")
+            if k in L}
+    indent = {L[k] for k in ("cogs", "rnd", "sga", "nonop", "taxes", "da", "shares_basic", "eps_basic",
+                             "cash_sti", "receivables", "inventory", "prepaid", "other_current_assets", "ppe", "lt_investments",
+                             "goodwill_intangibles", "other_lt_assets", "st_debt", "lt_debt", "other_lt_liabilities",
+                             "retained_earnings", "aoci", "sbc", "chg_receivables", "chg_inventory", "chg_payables", "capex",
+                             "acquisitions", "debt_net", "equity_net", "dividends") if k in L}
+    st.caption("En **negrita**, las partidas clave (totales y resultados); con sangría, el detalle que las compone. Negativos en rojo.")
     for title, rows in [("Cuenta de resultados (PyG)", F.PYG_ROWS), ("Balance", F.BALANCE_ROWS), ("Cash Flow", F.CASHFLOW_ROWS)]:
         st.markdown(f"## {title}")
         df = f.table(rows)
-        show_rows_table(df, kinds=m_kinds)
+        show_rows_table(df, kinds=m_kinds, bold=bold, indent=indent)
     st.caption(f"Millones de {f.currency}; acciones en millones. Fuente: SEC EDGAR XBRL (10-K). Fechas de cierre: "
                + ", ".join(f"{y}: {e}" for y, e in f.period_end.items()))
     with st.expander("De qué etiqueta XBRL sale cada dato"):
@@ -455,7 +466,8 @@ def _tab_eps(ca):
         base = ca.val.projections["Base"]
         keep = ["BPA diluido", "Crecimiento del BPA", "Dividendo por acción", "Ventas", "Crecimiento de ventas", "Beneficio neto",
                 "Margen neto %", "Acciones diluidas (M)", "Valor contable por acción", "ROE"]
-        show_rows_table(base.loc[keep], kinds={"Ventas": "m", "Beneficio neto": "m", "Acciones diluidas (M)": "m"})
+        show_rows_table(base.loc[keep], kinds={"Ventas": "m", "Beneficio neto": "m", "Acciones diluidas (M)": "m"},
+                        bold={"BPA diluido", "Ventas", "Beneficio neto"})
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("## Control histórico del PER")
@@ -476,7 +488,7 @@ def _tab_roic(T, ca):
     st.caption("Capital invertido = deuda a largo plazo + patrimonio neto − caja e inversiones a corto. NOPAT = EBIT × (1 − tipo efectivo).")
     show_rows_table(ca.roic_df, kinds={"Crecimiento del NOPAT ($)": "m", "Gasto en I+D": "m", "EBIT": "m", "EBIT ajustado": "m",
                                        "NOPAT": "m", "NOPAT ajustado": "m", "Activo de I+D capitalizado": "m",
-                                       "Amortización del I+D capitalizado": "m", "Ajuste al EBIT": "m"})
+                                       "Amortización del I+D capitalizado": "m", "Ajuste al EBIT": "m"}, bold={"Capital invertido (fin de año)", "NOPAT", "ROIC", "ROIC incremental", "ROIC ajustado (I+D capitalizado)"})
 
 
 def _tab_escenarios(T, ca):
@@ -575,7 +587,7 @@ def _tab_escenarios(T, ca):
         return
     st.markdown("## 4. Valor futuro por escenario")
     explica("esc_4")
-    show_rows_table(v.by_scenario)
+    show_rows_table(v.by_scenario, bold={"Valor futuro (VF)", "Rentabilidad anual", "Probabilidad"})
     st.markdown("## 5. Test de cobertura · 6. Valor estimado y margen de seguridad")
     explica("esc_56")
     c1, c2 = st.columns(2)
@@ -613,7 +625,10 @@ def _tab_escenarios(T, ca):
         with st.expander(f"Proyección · {scn}"):
             df = v.projections[scn]
             show_rows_table(df, kinds={"Margen bruto": "m", "Variación del circulante": "m", "Variación de caja": "m",
-                                       "Variación de deuda": "m", "Acciones diluidas (M)": "m"})
+                                       "Variación de deuda": "m", "Acciones diluidas (M)": "m"},
+                            bold={"Ventas", "Resultado operativo (EBIT)", "Beneficio neto", "BPA diluido", "Flujo de caja libre",
+                                  "Total activo", "Patrimonio neto", "— FLUJO DE CAJA —", "— BALANCE —"},
+                            indent={"   de los cuales I+D", "   comerciales, generales y otros"})
 
 
 def _tab_riesgo(T, ca):

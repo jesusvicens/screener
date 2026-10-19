@@ -105,15 +105,43 @@ def fmt_cell(v, kind):
     return num(v, 0) if abs(v) >= 100 else num(v, 1)
 
 
-def show_rows_table(df: pd.DataFrame, kinds: dict | None = None, height: int | None = None):
-    """Tabla con filas = conceptos y columnas = años; cada fila con su formato."""
+INDENT = "\u2003"  # sangría para las partidas de detalle
+
+
+def show_rows_table(df: pd.DataFrame, kinds: dict | None = None, height: int | None = None,
+                    bold: set | None = None, indent: set | None = None):
+    """Tabla con filas = conceptos y columnas = años; cada fila con su formato.
+
+    bold: filas clave (totales) en negrita y con fondo suave · indent: filas de detalle con sangría.
+    Los números negativos salen en rojo.
+    """
     kinds = kinds or {}
+    bold, indent = set(bold or ()), set(indent or ())
     out = df.copy().astype(object)
     for idx in out.index:
         k = kinds.get(idx) or kind_of(idx)
         out.loc[idx] = [fmt_cell(v, k) for v in df.loc[idx]]
     out.columns = [str(c) for c in out.columns]
-    st.dataframe(out, width="stretch", height=height or min(38 + 35 * len(out), 900))
+    labels = {i: (INDENT + str(i) if i in indent else str(i)) for i in out.index}
+    is_bold = {labels[i]: i in bold for i in out.index}
+    out.index = [labels[i] for i in out.index]
+
+    def _row(r):
+        b = is_bold.get(r.name, False)
+        css = []
+        for v in r:
+            c = "font-weight: 700; background-color: #eef3fa;" if b else ""
+            if isinstance(v, str) and v[:1] in ("-", "−") and len(v) > 1:
+                c += " color: #b42318;"
+            css.append(c)
+        return css
+
+    sty = out.style.apply(_row, axis=1)
+    try:
+        sty = sty.map_index(lambda v: "font-weight: 700; background-color: #eef3fa;" if is_bold.get(v) else "", axis=0)
+    except AttributeError:
+        pass
+    st.dataframe(sty, width="stretch", height=height or min(38 + 35 * len(out), 900))
 
 
 def link_key() -> str:

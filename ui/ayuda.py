@@ -125,7 +125,7 @@ Para cada año calcula el **PER de salida requerido** para ganar r. Si es menor 
     "prioridad": """
 **Para qué sirve:** decidir qué empresa analizar a continuación y llevar tus listas de seguimiento.
 
-- **Recomendadas para analizar:** empresas con buena nota financiera (examen calculado cada semana para todas) que aún no tienes en tus listas ni analizadas. **Prioridad** (0-10) = 70 % nota financiera + 30 % precio relativo: la candidata con mayor rentabilidad por flujo de caja libre (FCF / capitalización) saca 10 en precio y la más cara, 0. Es un orden para empezar, no una recomendación de compra.
+- **Recomendadas para analizar:** empresas con buena nota financiera (examen calculado cada semana para todas) que aún no tienes en tus listas ni analizadas. **Prioridad** (0-10) = 70 % nota financiera + 30 % precio relativo: la candidata con mayor rentabilidad por flujo de caja libre (FCF / capitalización) saca 10 en precio y la más cara, 0. Las columnas **Puntos por nota**, **Puntos por precio** y **Motivo** explican la posición de cada una, y abajo puedes ver el detalle completo de cualquiera. Es un orden para empezar, no una recomendación de compra.
 - **Mis listas:** A analizar, Analizadas, Para más adelante, Caras (esperar precio), Descartadas y las que crees tú. Cambia la columna «Lista» para mover una empresa, escribe un comentario o un **precio objetivo** y pulsa «Guardar cambios». Cuando el precio llega a tu objetivo, sale un aviso 🔔 arriba.
 - **Precio máx. sugerido:** si tienes la empresa analizada y guardada, tu valor estimado × (1 − tu margen de seguridad). Puedes copiarlo como precio objetivo.
 - También puedes añadir empresas desde la ficha (desplegable «Lista» junto a «Guardar análisis») y desde el resultado del screener.

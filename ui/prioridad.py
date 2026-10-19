@@ -62,8 +62,11 @@ def _universo() -> pd.DataFrame | None:
 def page():
     st.markdown("<style>.block-container{max-width:98% !important;padding-left:1.5rem;padding-right:1.5rem;}</style>",
                 unsafe_allow_html=True)
-    st.markdown("<span class='subtle'>PRIORIDAD · QUÉ ANALIZAR Y TUS LISTAS</span>", unsafe_allow_html=True)
     st.markdown("# Prioridad")
+    body()
+
+
+def body():
     explica("prioridad")
     d = _listas()
     df = _universo()
@@ -105,23 +108,56 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
         cand = cand[~cand["Ticker"].isin(list(d["empresas"]))]
     if excl_guard:
         cand = cand[~cand["Ticker"].isin(list(gu))]
-    cand["Prioridad"] = listas.prioridad(cand)
+    det = listas.prioridad_detalle(cand)
+    for c in det.columns:
+        cand[c] = det[c]
     key = "Prioridad" if orden.startswith("Prioridad") else orden
     cand = cand.sort_values(key, ascending=False, na_position="last")
 
     st.markdown(f"## {len(cand):,} candidatas")
-    cols = ["Empresa", "Prioridad", "Nota financiera", "Nota PyG", "Nota Balance", "Nota Cash Flow", "Nota Asignación de capital",
-            "Sector", "Capitalización (M$)", "PER", "Rent. FCF", "Crec. medio BPA", "CAGR ventas 5a", "ROE medio 5a"]
+    with st.container(border=True):
+        st.markdown(
+            f"**Cómo se ordena.** Prioridad (0-10) = **{listas.PESO_NOTA:.0%} calidad** + **{listas.PESO_PRECIO:.0%} precio**.  \n"
+            f"· **Puntos por nota** = nota financiera × {listas.PESO_NOTA:.1f}. La nota es tu examen financiero de 21 preguntas "
+            "(PyG, Balance, Cash Flow y Asignación de capital) calculado con 10 años de datos. Una nota de 9 aporta 6,3 puntos.  \n"
+            f"· **Puntos por precio** = posición de 0 a 10 × {listas.PESO_PRECIO:.1f}. Se compara la **rentabilidad por caja libre** "
+            "(flujo de caja libre ÷ capitalización: cuánto «rinde» la empresa al precio de hoy) con la del resto de candidatas de "
+            "esta lista: la que más rinde saca 10 (3 puntos) y la que menos, 0. Si el dato no es fiable o falta, cuenta 5 (1,5 puntos).  \n"
+            "· Por eso una empresa con nota algo menor puede ir delante si está bastante más barata. La columna **Motivo** "
+            "lo cuenta en palabras para cada una. Es un orden para decidir qué mirar primero, no una recomendación de compra.")
+    if not cand.empty:
+        top = cand.iloc[0]
+        st.markdown(f"**La primera, {top['Ticker']}** ({top['Empresa']}): {top['Prioridad']:.2f} puntos = "
+                    f"{top['Puntos por nota']:.2f} por nota + {top['Puntos por precio']:.2f} por precio. {top['Motivo']}.")
+    cols = ["Empresa", "Prioridad", "Puntos por nota", "Puntos por precio", "Motivo", "Nota financiera", "Nota PyG", "Nota Balance",
+            "Nota Cash Flow", "Nota Asignación de capital", "Sector", "Capitalización (M$)", "PER", "Rent. FCF", "Crec. medio BPA",
+            "CAGR ventas 5a", "ROE medio 5a"]
     out = cand.head(200)[["Ticker"] + [c for c in cols if c in cand]].set_index("Ticker")
     out = out.rename(columns={"Crec. medio BPA": "Crec. medio BPA 5a"})
     out["Empresa"] = [company_url(t, n) for t, n in zip(out.index, out["Empresa"])]
     kinds = {k: v for k, v in screener.METRIC_KIND.items()}
-    kinds.update({"Prioridad": "ps", "Crec. medio BPA 5a": "pct"})
+    kinds.update({"Prioridad": "ps", "Puntos por nota": "ps", "Puntos por precio": "ps", "Crec. medio BPA 5a": "pct"})
     show_cols_table(out, height=560, kinds={k: v for k, v in kinds.items() if k in out.columns},
                     column_config={"Empresa": st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$",
-                                                                          help="Abre la ficha en una pestaña nueva")})
+                                                                          help="Abre la ficha en una pestaña nueva"),
+                                   "Motivo": st.column_config.TextColumn("Motivo", width="large",
+                                                                         help="Por qué está en esta posición")})
     if len(cand) > 200:
         st.caption("Muestro las 200 primeras.")
+    if not out.empty:
+        ver = st.selectbox("Ver el motivo completo de…", list(out.index), index=None, placeholder="Elige una empresa de la tabla…",
+                           key="rec_ver")
+        if ver:
+            r = cand[cand["Ticker"] == ver].iloc[0]
+            pos = list(cand["Ticker"]).index(ver) + 1
+            bloques = " · ".join(f"{lab} **{r[c]:.1f}**" for c, lab in listas.BLOQUES.items() if c in r and pd.notna(r[c]))
+            st.markdown(
+                f"**{ver} · {r['Empresa']}** — puesto **{pos}** de {len(cand)}  \n"
+                f"Prioridad **{r['Prioridad']:.2f}** = {r['Puntos por nota']:.2f} por nota (nota {r['Nota financiera']:.2f} × "
+                f"{listas.PESO_NOTA:.1f}) + {r['Puntos por precio']:.2f} por precio (posición {r['Precio (0-10)']:.1f}/10 × "
+                f"{listas.PESO_PRECIO:.1f})  \n"
+                f"Bloques del examen: {bloques}  \n"
+                f"{r['Motivo']}.")
 
     a = st.columns([3, 1.4, 1])
     pick = a[0].multiselect("Añadir a una lista", list(out.index), placeholder="Elige empresas de la tabla…")
@@ -269,4 +305,4 @@ def selector_lista(ticker: str, container=None):
         _guardar(listas.set_lists(dd, ticker, sel), f"{ticker}: " + (", ".join(sel) if sel else "fuera de tus listas"))
 
     box.multiselect("Listas", d["grupos"], key=k, on_change=_cambio, label_visibility="collapsed", placeholder="Añadir a mis listas…",
-                    help="Puedes ponerla en varias listas a la vez (página Prioridad)")
+                    help="Puedes ponerla en varias listas a la vez (Screener → Prioridad y mis listas)")
