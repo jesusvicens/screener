@@ -4,7 +4,7 @@ Configuración (una vez):
 1. Registra una aplicación en https://entra.microsoft.com (App registrations → New registration), con
    «Personal Microsoft accounts only», sin URI de redirección. Copia el «Application (client) ID».
 2. En Authentication activa «Allow public client flows».
-3. En los Secrets de Streamlit añade:  ONEDRIVE_CLIENT_ID = "<el client id>"
+3. Pon el client id en DEFAULT_CLIENT_ID (abajo) o en los Secrets como ONEDRIVE_CLIENT_ID
 4. En la ficha de una empresa → pestaña «Cualitativo y documentos» → «Conectar OneDrive» y entra con tu cuenta.
 
 Permisos que pide: Files.Read (leer tus ficheros, no puede modificar ni borrar nada), offline_access y User.Read.
@@ -34,8 +34,13 @@ class OneDriveError(Exception):
     pass
 
 
+# Id. público de la aplicación «Terminal inversión» (cliente público, sin secreto: no da acceso a nada por sí solo;
+# cada uno tiene que entrar con su propia cuenta). Se puede cambiar con ONEDRIVE_CLIENT_ID en los Secrets.
+DEFAULT_CLIENT_ID = "fd79208b-08ce-458f-99be-26450ed16113"
+
+
 def client_id() -> str | None:
-    return storage._secret("ONEDRIVE_CLIENT_ID")
+    return storage._secret("ONEDRIVE_CLIENT_ID") or DEFAULT_CLIENT_ID
 
 
 def configured() -> bool:
