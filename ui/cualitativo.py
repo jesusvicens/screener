@@ -29,13 +29,42 @@ def _size(n) -> str:
 
 
 # ------------------------------------------------------------------ pestaña
+def _secciones(txt: str) -> tuple[str, list[tuple[str, str]]]:
+    """Divide el dossier por sus títulos «### …»: (intro, [(título, contenido)])."""
+    intro, secs, cur = [], [], None
+    for line in (txt or "").splitlines():
+        if line.startswith("### "):
+            cur = [line[4:].strip(), []]
+            secs.append(cur)
+        elif cur is None:
+            intro.append(line)
+        else:
+            cur[1].append(line)
+    return "\n".join(intro).strip(), [(t, "\n".join(c).strip()) for t, c in secs]
+
+
 def tab(T: str, ca, answers: dict, motivos: dict):
-    st.markdown("## Análisis cualitativo")
-    _resumen_cualitativo(T, ca, answers, motivos)
-    st.markdown("## Dossier")
-    _dossier(T)
-    st.markdown("## Documentos en OneDrive")
-    _documentos(T, ca)
+    k = f"dossier_{T}"
+    if k not in st.session_state:
+        st.session_state[k] = (storage.load(T) or {}).get("dossier", "")
+    intro, secs = _secciones(st.session_state[k])
+    if intro:
+        st.caption(intro.strip("*").replace("$", "\\$"))
+    names = ["Examen cualitativo"] + [t for t, _ in secs] + ["Documentos", "✏️ Editar dossier"]
+    tabs = st.tabs(names, key=f"cual_tabs_{T}")
+    with tabs[0]:
+        _resumen_cualitativo(T, ca, answers, motivos)
+        if not secs:
+            st.info("Aún no hay dossier para esta empresa. Pídemelo en el chat (leo tus documentos de OneDrive y el 10-K) o escríbelo "
+                    "en «✏️ Editar dossier»: cada título que empiece por «### » se convierte en una pestaña.")
+    for (t, body), tb in zip(secs, tabs[1:1 + len(secs)]):
+        with tb:
+            st.markdown(f"## {t}")
+            st.markdown(body.replace("$", "\\$"))
+    with tabs[-2]:
+        _documentos(T, ca)
+    with tabs[-1]:
+        _dossier_editor(T)
 
 
 def _resumen_cualitativo(T, ca, answers, motivos):
@@ -65,29 +94,21 @@ def _resumen_cualitativo(T, ca, answers, motivos):
                     st.markdown(f"<div class='why'>{motivos[qid]}</div>", unsafe_allow_html=True)
 
 
-def _dossier(T):
+def _dossier_editor(T):
     k = f"dossier_{T}"
-    if k not in st.session_state:
-        st.session_state[k] = (storage.load(T) or {}).get("dossier", "")
-    txt = st.session_state[k]
-    if txt:
-        st.markdown(txt)
-    else:
-        st.caption("Aquí va el resumen de lo que has estudiado de la empresa: qué hace y cómo gana dinero, ventaja competitiva, "
-                   "dirección, riesgos, tesis y lo que dicen los documentos que has leído. Puedes escribirlo tú o pedirme que lo "
-                   "redacte a partir de tus documentos y del 10-K.")
-    with st.expander("✏️ Editar el dossier"):
-        new = st.text_area("Dossier (admite Markdown: ## títulos, **negrita**, listas con -)", value=txt, height=360, key=f"dossier_ed_{T}")
-        if st.button("Guardar dossier", key=f"dossier_save_{T}", type="primary"):
-            data = storage.load(T) or {}
-            data["dossier"] = new
-            try:
-                storage.save(T, data)
-                st.session_state[k] = new
-                st.toast("Dossier guardado")
-                st.rerun()
-            except Exception as e:  # noqa: BLE001
-                st.error(f"No se ha podido guardar: {e}")
+    txt = st.session_state.get(k, "")
+    st.caption("El dossier admite Markdown. Cada título que empiece por «### » se muestra como una pestaña aparte.")
+    new = st.text_area("Dossier", value=txt, height=520, key=f"dossier_ed_{T}", label_visibility="collapsed")
+    if st.button("Guardar dossier", key=f"dossier_save_{T}", type="primary"):
+        data = storage.load(T) or {}
+        data["dossier"] = new
+        try:
+            storage.save(T, data)
+            st.session_state[k] = new
+            st.toast("Dossier guardado")
+            st.rerun()
+        except Exception as e:  # noqa: BLE001
+            st.error(f"No se ha podido guardar: {e}")
 
 
 # ------------------------------------------------------------------ OneDrive

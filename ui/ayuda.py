@@ -31,6 +31,14 @@ TEXTOS: dict[str, str] = {
 - **Sin responder** cuenta 0 (como en tu Excel). **«No aplica»** no cuenta en la media: úsalo cuando la pregunta no tiene sentido para la empresa (p. ej. margen bruto en un banco).
 - Pasa el ratón por el **?** de cada pregunta para ver por qué importa.
 """,
+    "guias": """
+**Para qué sirve:** comprobar si la dirección cumple lo que promete, que es la mejor prueba de su calidad (Fisher).
+
+- **Guía vs. resultado:** cada trimestre, la guía que dieron el trimestre anterior (banda azul) frente al resultado real (barra). Verde = por encima, ámbar = dentro, rojo = por debajo.
+- **Evolución de la guía anual:** cómo cambian la previsión del año con cada presentación (primera guía, sube, se mantiene, baja) y dónde acabó el año.
+- **Trimestre a trimestre:** resumen de la presentación de resultados y su tono, citas de la dirección, real frente a guía, la guía nueva que dieron, la nota de prensa de la SEC y la transcripción de tu OneDrive (si la tienes guardada con el trimestre en el nombre, p. ej. «q2fy26-transcript»).
+- **Resultados trimestrales (SEC):** ingresos, beneficio y BPA de cada trimestre para cualquier empresa, aunque no tenga guías guardadas.
+""",
     "estados": """
 **Para qué sirve:** los tres estados financieros anuales tal como los presenta la empresa en sus 10-K, en millones.
 

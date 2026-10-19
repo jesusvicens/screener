@@ -38,6 +38,12 @@ La pestaña «Cualitativo y documentos» de cada ficha reúne tu examen cualitat
 vista previa. La conexión con OneDrive es de solo lectura (Microsoft Graph, permiso Files.Read); se configura una vez con
 `ONEDRIVE_CLIENT_ID` en los Secrets (pasos en `terminal/onedrive.py`) y el botón «Conectar OneDrive».
 
+## Guías y resultados
+Pestaña de la ficha con la guía que da la dirección cada trimestre frente al resultado real, la evolución de la guía anual
+(primera guía, subidas, bajadas), el resumen y el tono de cada presentación de resultados, la nota de prensa de la SEC y la
+transcripción guardada en tu OneDrive. Las guías se extraen de las notas de prensa (8-K) y se guardan con el análisis
+(«guias»); los resultados trimestrales reales salen del XBRL de la SEC para cualquier empresa (`terminal/trimestres.py`).
+
 ## Datos preparados cada noche
 Para que la app abra rápido aunque Streamlit la haya reiniciado (su disco se borra al dormirse):
 - **Screener** (datos públicos): la GitHub Action «Datos del screener» publica cada noche, de lunes a viernes, precios y sectores (cada día) y fundamentales (cada semana) en la rama `datos` de este repo. La app los lee al arrancar.

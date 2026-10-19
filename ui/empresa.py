@@ -193,7 +193,7 @@ def page():
     _header(ca)
     _save_bar(T, work, ca)
 
-    tabs = st.tabs(["Resumen", "Histórico", "Examen", "Cualitativo y documentos", "Estados financieros", "Modelo EPS", "ROIC",
+    tabs = st.tabs(["Resumen", "Histórico", "Examen", "Cualitativo y documentos", "Guías y resultados", "Estados financieros", "Modelo EPS", "ROIC",
                     "Escenarios y valoración", "Riesgo", "Presentaciones SEC", "Notas"], key="ficha_tabs")  # recuerda la pestaña
     with tabs[0]:
         _tab_resumen(ca)
@@ -205,18 +205,22 @@ def page():
         from ui import cualitativo
         cualitativo.tab(T, ca, ca.answers, st.session_state.get(_key(T, "cual_motivos"), {}) or {})
     with tabs[4]:
-        _tab_estados(ca)
+        from ui import guias
+        explica("guias")
+        guias.tab(T, ca)
     with tabs[5]:
-        _tab_eps(ca)
+        _tab_estados(ca)
     with tabs[6]:
-        _tab_roic(T, ca)
+        _tab_eps(ca)
     with tabs[7]:
-        _tab_escenarios(T, ca)
+        _tab_roic(T, ca)
     with tabs[8]:
-        _tab_riesgo(T, ca)
+        _tab_escenarios(T, ca)
     with tabs[9]:
-        _tab_filings(ca)
+        _tab_riesgo(T, ca)
     with tabs[10]:
+        _tab_filings(ca)
+    with tabs[11]:
         _tab_notas(T, ca)
 
 
@@ -260,7 +264,7 @@ def _save_bar(T, work, ca):
         data["resumen"] = {k: (float(v) if isinstance(v, (int, float)) else v) for k, v in pipeline.summary_row(ca).items()}
         try:  # conserva lo que se guarda desde otras pestañas (p. ej. el dossier)
             prev = storage.load(T) or {}
-            for k in ("dossier",):
+            for k in ("dossier", "guias"):
                 if k in prev and k not in data:
                     data[k] = prev[k]
         except Exception:  # noqa: BLE001
