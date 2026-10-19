@@ -6,8 +6,23 @@ import streamlit as st
 
 st.set_page_config(page_title="Terminal · análisis de empresas", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
-from ui.common import inject_css, link_key  # noqa: E402
-from ui import empresa, otras  # noqa: E402
+import sys  # noqa: E402
+
+
+def _import_ui():
+    """Al subir código nuevo, Streamlit recarga los módulos y a veces la importación falla con KeyError('ui')
+    (se queda a medias en sys.modules). En ese caso se limpian los módulos de la app y se importan de nuevo."""
+    try:
+        from ui import common, empresa, otras
+    except KeyError:
+        for m in [k for k in list(sys.modules) if k.split(".")[0] in ("ui", "terminal")]:
+            sys.modules.pop(m, None)
+        from ui import common, empresa, otras
+    return common, empresa, otras
+
+
+_common, empresa, otras = _import_ui()
+inject_css, link_key = _common.inject_css, _common.link_key
 
 
 def _password_gate() -> bool:
