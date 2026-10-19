@@ -32,6 +32,12 @@ El botón «⬇ Excel (mi plantilla)» de cada ficha genera tu propio Excel de a
 ## Notas financieras de todas las empresas
 `scripts/notas_financieras.py` calcula el examen financiero de todo el universo con el archivo masivo de la SEC (`companyfacts.zip`). Lo ejecuta cada domingo la GitHub Action «Notas financieras» y guarda `data/notas_financieras.csv.gz`; el screener lo lee. Para lanzarlo a mano: GitHub → Actions → «Notas financieras (todas las empresas)» → Run workflow.
 
+## Cualitativo y documentos (OneDrive)
+La pestaña «Cualitativo y documentos» de cada ficha reúne tu examen cualitativo (respuestas y motivos por bloque), un **dossier** en texto
+(lo que has estudiado de la empresa; lo escribes tú o me lo pides en el chat) y los **documentos de su carpeta en tu OneDrive**, con
+vista previa. La conexión con OneDrive es de solo lectura (Microsoft Graph, permiso Files.Read); se configura una vez con
+`ONEDRIVE_CLIENT_ID` en los Secrets (pasos en `terminal/onedrive.py`) y el botón «Conectar OneDrive».
+
 ## Datos preparados cada noche
 Para que la app abra rápido aunque Streamlit la haya reiniciado (su disco se borra al dormirse):
 - **Screener** (datos públicos): la GitHub Action «Datos del screener» publica cada noche, de lunes a viernes, precios y sectores (cada día) y fundamentales (cada semana) en la rama `datos` de este repo. La app los lee al arrancar.
