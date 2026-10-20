@@ -63,7 +63,7 @@ def tab(T: str, ca):
     t1, t2, t3, t4 = st.tabs(["Guía vs. resultado", "Evolución de la guía anual", "Trimestre a trimestre", "Resultados trimestrales (SEC)"],
                              key=f"guias_tabs_{T}")
     with t1:
-        _guia_vs_real(qs)
+        _guia_vs_real(qs, data)
     with t2:
         _guia_anual(qs)
     with t3:
@@ -79,8 +79,35 @@ def _sin_guias(T, ca):
     _xbrl(ca)
 
 
-def _guia_vs_real(qs):
+def _kind(m: str) -> str:
+    """Tipo de dato de una métrica que no está en la lista fija (para empresas con otros indicadores)."""
+    l = m.lower()
+    if l.startswith(("crec", "margen")) or "%" in l or "frecuencia" in l or "tasa" in l:
+        return "pct"
+    if "bpa" in l or "por acción" in l:
+        return "ps"
+    if "acciones" in l or "unidades" in l:
+        return "sh"
+    return "m"
+
+
+def _sin_guia_numerica(qs, data):
+    st.info(data.get("nota_guia") or "Esta empresa no da guía numérica de resultados: no hay promesas que comparar con la realidad. "
+            "En «Trimestre a trimestre» tienes el resumen de cada presentación y en «Resultados trimestrales» las cifras de la SEC.")
+    rows = []
+    for q in qs:
+        r = q.get("real") or {}
+        rows.append({"Trimestre": q["trimestre"], "Publicado": q.get("publicado"), "Ingresos": _fmt(r.get("Ingresos"), "m"),
+                     "Crec. interanual": fmt_cell(r.get("Crec. ingresos"), "pct") if r.get("Crec. ingresos") is not None else "—",
+                     "BPA GAAP": _fmt(r.get("BPA GAAP"), "ps"), "Tono": q.get("tono") or ""})
+    st.dataframe(pd.DataFrame(rows[::-1]).set_index("Trimestre"), width="stretch", height=min(38 + 35 * len(rows), 600))
+
+
+def _guia_vs_real(qs, data=None):
     disp = [m for m, _k in METRICAS if any((q.get("guia_previa") or {}).get(m) for q in qs)]
+    if not disp:
+        _sin_guia_numerica(qs, data or {})
+        return
     c = st.columns([2, 3])
     met = c[0].selectbox("Métrica", disp, index=0, key="gvr_met")
     kind = dict(METRICAS)[met]
@@ -225,7 +252,7 @@ def _trimestre(T, ca, qs):
                 for ct in q["citas"]:
                     st.markdown(f"> {_md(ct)}")
     with c2:
-        st.markdown("#### Real frente a la guía")
+        st.markdown("#### Real frente a la guía" if any(q.get("guia_previa") or {} for q in qs) else "#### Cifras del trimestre")
         g = q.get("guia_previa") or {}
         rows = []
         for m, k in METRICAS:
@@ -235,9 +262,12 @@ def _trimestre(T, ca, qs):
             v, dif = _veredicto(r, g.get(m))
             rows.append({"Métrica": m, "Guía": _rng(g.get(m), k), "Real": _fmt(r, k),
                          "": {"Por encima": "🟢", "Dentro": "🟡", "Por debajo": "🔴"}.get(v, "")})
-        for m, k in [("ARR total", "m"), ("ARR Digital Media", "m"), ("Caja operativa", "m"), ("RPO", "m"), ("Acciones recompradas (M)", "sh")]:
-            if q["real"].get(m) is not None:
-                rows.append({"Métrica": m, "Guía": "", "Real": _fmt(q["real"][m], k), "": ""})
+        shown = {m for m, _k in METRICAS}
+        for m, v in q["real"].items():  # el resto de indicadores que publica la empresa
+            if m in shown or v is None:
+                continue
+            k = "sh" if m == "Acciones recompradas (M)" else _kind(m)
+            rows.append({"Métrica": m, "Guía": "", "Real": _fmt(v, k), "": ""})
         st.dataframe(pd.DataFrame(rows).set_index("Métrica"), width="stretch", height=38 + 35 * len(rows))
     st.markdown("#### Guía que dio en esta presentación")
     gc = st.columns(2)

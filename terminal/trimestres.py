@@ -23,18 +23,50 @@ MONEY = ("Ingresos", "Beneficio bruto", "Resultado operativo", "Beneficio neto",
 
 
 def _facts(facts: dict, tags: list[str]) -> dict[tuple[str, str], float]:
-    """{(inicio, fin): valor} de 10-Q/10-K, la primera etiqueta con datos manda por periodo."""
+    """{(inicio, fin): valor} de 10-Q/10-K. La primera etiqueta con datos manda por periodo y, dentro de ella,
+    la presentación más reciente (así los BPA y las acciones salen ya reexpresados tras un split)."""
     g = (facts.get("facts") or {}).get("us-gaap") or {}
     out: dict[tuple[str, str], float] = {}
     for tag in tags:
         if tag not in g:
             continue
+        best: dict[tuple[str, str], tuple[str, float]] = {}
         for unit in g[tag]["units"].values():
             for x in unit:
                 if x.get("form") not in ("10-Q", "10-K", "10-Q/A", "10-K/A") or "start" not in x:
                     continue
-                out.setdefault((x["start"], x["end"]), x["val"])
+                k = (x["start"], x["end"])
+                if k not in best or (x.get("filed") or "") > best[k][0]:
+                    best[k] = (x.get("filed") or "", x["val"])
+        for k, (_f, v) in best.items():
+            out.setdefault(k, v)
     return out
+
+
+def _split_adjust(df: pd.DataFrame) -> pd.DataFrame:
+    """Ajusta acciones y BPA de los trimestres anteriores a un split (salto ×2, ×3, ×4… en el nº de acciones)."""
+    if "Acciones diluidas" not in df or df["Acciones diluidas"].dropna().empty:
+        return df
+    sh = df["Acciones diluidas"]
+    nn = sh.dropna()
+    factor = pd.Series(1.0, index=df.index)
+    cum = 1.0
+    for i in range(len(nn) - 1, 0, -1):  # de lo más reciente hacia atrás, solo entre trimestres con dato
+        a, b = nn.iloc[i], nn.iloc[i - 1]
+        r = a / b if b else 1
+        for k in (2, 3, 4, 5, 10, 20):
+            if abs(r / k - 1) < 0.12:
+                cum *= k
+                break
+        factor[factor.index < nn.index[i]] = cum
+    df = df.copy()
+    df["Acciones diluidas"] = (sh * factor).interpolate(limit_area="inside").ffill()
+    if "Beneficio neto" in df and "BPA GAAP" in df:  # BPA coherente con el beneficio y las acciones ya ajustadas
+        calc = df["Beneficio neto"] / df["Acciones diluidas"]
+        adj = df["BPA GAAP"] * factor
+        bad = ((adj - calc).abs() > calc.abs() * 0.15) | adj.isna()
+        df["BPA GAAP"] = adj.where(~bad, calc.round(2))
+    return df
 
 
 def _quarters(per: dict[tuple[str, str], float], additive: bool = True) -> dict[str, float]:
@@ -84,8 +116,9 @@ def quarterly(facts: dict, n_years: int = 5) -> pd.DataFrame:
     for c in MONEY:
         if c in df:
             df[c] = df[c] / 1e6
-    if "Acciones diluidas" in df:  # el 4.º trimestre no trae acciones propias: se toma la media de sus vecinos
-        df["Acciones diluidas"] = (df["Acciones diluidas"] / 1e6).interpolate(limit_area="inside").ffill()
+    if "Acciones diluidas" in df:  # (el 4.º trimestre no trae acciones propias: se interpola entre sus vecinos)
+        df["Acciones diluidas"] = df["Acciones diluidas"] / 1e6
+    df = _split_adjust(df)
     for c in ("Recompras", "Dividendos", "Capex"):
         if c in df:
             df[c] = df[c].abs()
