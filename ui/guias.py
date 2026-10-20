@@ -60,8 +60,15 @@ def tab(T: str, ca):
         _sin_guias(T, ca)
         return
     st.caption(f"{data.get('fuente', '')} {data.get('unidades', '')} Actualizado: {data.get('actualizado', '')}.")
-    t1, t2, t3, t4 = st.tabs(["Guía vs. resultado", "Evolución de la guía anual", "Trimestre a trimestre", "Resultados trimestrales (SEC)"],
-                             key=f"guias_tabs_{T}")
+    names = ["Guía vs. resultado", "Evolución de la guía anual", "Trimestre a trimestre", "Resultados trimestrales (SEC)"]
+    if data.get("estrategia_anual"):
+        names = ["Estrategia año a año"] + names
+    tabs = st.tabs(names, key=f"guias_tabs_{T}")
+    if data.get("estrategia_anual"):
+        with tabs[0]:
+            _estrategia(data)
+        tabs = tabs[1:]
+    t1, t2, t3, t4 = tabs
     with t1:
         _guia_vs_real(qs, data)
     with t2:
@@ -70,6 +77,31 @@ def tab(T: str, ca):
         _trimestre(T, ca, qs)
     with t4:
         _xbrl(ca)
+
+
+def _estrategia(data):
+    """Qué dijo la dirección cada año en sus presentaciones de resultados y cuál era su estrategia."""
+    if data.get("estrategia_resumen"):
+        st.markdown("#### Cómo ha evolucionado la estrategia")
+        st.markdown(_md(data["estrategia_resumen"]))
+    st.caption(data.get("estrategia_fuente", ""))
+    for y in data["estrategia_anual"][::-1]:
+        with st.expander(f"**{y['año']}** · {y.get('titulo', '')}", expanded=y is data["estrategia_anual"][-1]):
+            if y.get("contexto"):
+                st.markdown(f"<span class='subtle'>{_md(y['contexto'])}</span>", unsafe_allow_html=True)
+            c = st.columns(2)
+            with c[0]:
+                st.markdown("**Estrategia que presentan**")
+                st.markdown("\n".join(f"- {_md(x)}" for x in y.get("estrategia", [])))
+            with c[1]:
+                st.markdown("**Qué dicen (mensajes clave)**")
+                st.markdown("\n".join(f"- {_md(x)}" for x in y.get("mensajes", [])))
+            if y.get("cumplimiento"):
+                st.markdown(f"**Lo que cumplieron:** {_md(y['cumplimiento'])}")
+            if y.get("tono"):
+                st.markdown(f"**Tono:** {_md(y['tono'])}")
+            if y.get("llamadas"):
+                st.markdown("**Transcripciones:** " + " · ".join(f"[{l['trimestre']}]({l['url']})" for l in y["llamadas"]))
 
 
 def _sin_guias(T, ca):
@@ -212,6 +244,22 @@ def _guia_anual(qs):
                "resultado final por encima de la primera guía indican una dirección que guía con prudencia.")
 
 
+def _find_any_transcript(items):
+    """Un documento con varias transcripciones (p. ej. «earnings calls 2020-2026.docx»)."""
+    found = []
+
+    def walk(its):
+        for it in its:
+            if it.get("folder"):
+                walk(it.get("children", []))
+            else:
+                nm = it["name"].lower()
+                if "transcript" in nm or "earnings call" in nm or "conference call" in nm:
+                    found.append(it)
+    walk(items)
+    return sorted(found, key=lambda x: x.get("modified") or "", reverse=True)[0] if found else None
+
+
 def _find_transcript(items, trimestre: str):
     m = re.match(r"Q(\d) FY(\d{4})", trimestre)
     if not m:
@@ -284,6 +332,8 @@ def _trimestre(T, ca, qs):
     links = []
     if q.get("nota_prensa"):
         links.append(f"[Nota de prensa en la SEC]({q['nota_prensa']})")
+    if q.get("transcripcion_url"):
+        links.append(f"[Transcripción completa de la call]({q['transcripcion_url']})")
     st.markdown(" · ".join(links) if links else "")
     _transcripcion(T, ca, sel)
 
@@ -302,6 +352,10 @@ def _transcripcion(T, ca, sel):
     except OD.OneDriveError as e:
         st.caption(str(e))
         return
+    if not it:
+        it = _find_any_transcript(_tree_cached(folder))
+        if it:
+            st.caption(f"No hay un fichero solo de {sel}; este documento de tu carpeta reúne varias calls:")
     if not it:
         st.caption(f"No encuentro la transcripción de {sel} en tu carpeta de OneDrive. Si la guardas con un nombre que incluya, por "
                    f"ejemplo, «{sel.replace(' ', '').lower()}-transcript», aparecerá aquí.")
