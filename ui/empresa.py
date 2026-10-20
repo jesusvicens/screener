@@ -268,7 +268,7 @@ def _header(ca: pipeline.CompanyAnalysis):
     pe_hist = [round(x, 1) for x in ca.eps_df["PER"] if x is not None and x == x and 0 < x < 200] if "PER" in ca.eps_df else []
     pe_now = (P / eps) if (P and eps and eps > 0) else None
     cols = st.columns(8)
-    cols[0].metric("Precio", num(P, 2) if P else "—", (("+" if ch1 >= 0 else "") + pct(ch1) + " 1 año") if ch1 is not None else None,
+    cols[0].metric("Precio", f"{num(P, 2)} $" if P else "—", (("+" if ch1 >= 0 else "") + pct(ch1) + " 1 año") if ch1 is not None else None,
                    chart_data=spark_px, chart_type="area",
                    help=f"Última cotización ({ca.params.price_date or 'manual'}). Debajo, la variación y el gráfico del último año.")
     med = sorted(pe_hist)[len(pe_hist) // 2] if pe_hist else None
@@ -288,7 +288,7 @@ def _header(ca: pipeline.CompanyAnalysis):
     if v and v.value:
         mos = v.value["Margen de seguridad al precio actual"]
         rent = v.value["Rentabilidad anual implícita en la media"]
-        cols[5].metric("Valor estimado", num(v.value["Valor estimado hoy = E[VF] / (1+r)^n"], 2),
+        cols[5].metric("Valor estimado", f'{num(v.value["Valor estimado hoy = E[VF] / (1+r)^n"], 2)} $',
                        help="Valor por acción hoy según tus escenarios (pestaña «Escenarios y valoración»).")
         cols[6].metric("Margen seg.", pct(mos), "a favor" if (mos or 0) > 0 else "en contra",
                        delta_color="normal" if (mos or 0) > 0 else "inverse", delta_arrow="off",
@@ -702,7 +702,7 @@ def _tab_escenarios(T, ca):
                 text=[f"{x:,.0f}<br>p={p:.0%}" for x, p in zip(vf.values, v.by_scenario.loc["Probabilidad"])], textposition="outside")
     fig.add_hline(y=U, line_dash="dash", line_color=AMBER, annotation_text=f"Umbral {U:,.0f}", annotation_font_color=AMBER)
     fig.add_hline(y=v.coverage["Valor futuro esperado E[VF]"], line_dash="dot", line_color=BLUE, annotation_text="E[VF]", annotation_font_color=BLUE)
-    st.plotly_chart(fig_layout(fig, f"Valor futuro en el año {ca.params.n} frente al umbral", 340), width="stretch")
+    st.plotly_chart(fig_layout(fig, f"Valor futuro en el año {ca.params.n} frente al umbral", 340, unit="$ por acción"), width="stretch")
 
     st.markdown("## 7. Ventana de horizontes (escenario base)")
     explica("esc_7")
@@ -774,7 +774,7 @@ def _tab_riesgo(T, ca):
         fig.add_bar(x=[scn], y=[g], marker_color=GREEN if g >= 0 else RED, name=scn, showlegend=False,
                     text=[f"{g:,.0f}"], textposition="outside")
     fig.add_hline(y=0, line_color=MUTED)
-    st.plotly_chart(fig_layout(fig, "Exceso o déficit ponderado por probabilidad (oportunidad vs riesgo)", 280), width="stretch")
+    st.plotly_chart(fig_layout(fig, "Exceso o déficit ponderado por probabilidad (oportunidad vs riesgo)", 280, unit="$ por acción"), width="stretch")
 
     st.markdown("## 3. Test de cobertura")
     c1, c2 = st.columns([3, 2])

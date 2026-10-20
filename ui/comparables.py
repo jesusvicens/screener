@@ -104,6 +104,6 @@ def tab(T: str, ca):
             if kind == "pct":
                 fig.update_xaxes(tickformat=".0%")
             fig.update_layout(showlegend=False, hovermode="closest")
-            fig_layout(fig, m, h=60 + 34 * len(body))
+            fig_layout(fig, m, h=60 + 34 * len(body), unit={"pct": "%", "x": "veces", "ps": "nota de 0 a 10"}.get(kind, ""))
             fig.update_layout(yaxis=dict(type="category"), xaxis=dict(type="linear"))
             cc[j].plotly_chart(fig, width="stretch", key=f"cmp_{T}_{m}")

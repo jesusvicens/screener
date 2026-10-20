@@ -19,7 +19,10 @@ METRICAS = [("Ingresos", "m"), ("BPA non-GAAP", "ps"), ("BPA GAAP", "ps"), ("Ing
 
 
 def _fmt(v, kind):
-    return fmt_cell(v, kind) if v is not None else "—"
+    """Cifra con su unidad: millones de $ («M$»), $ por acción («$») o millones de acciones («M acc.»)."""
+    if v is None:
+        return "—"
+    return fmt_cell(v, "m" if kind == "sh" else kind) + {"m": " M$", "ps": " $", "sh": " M acc."}.get(kind, "")
 
 
 def _rng(r, kind):
@@ -232,7 +235,7 @@ def _trimestre(T, ca, qs):
             v, dif = _veredicto(r, g.get(m))
             rows.append({"Métrica": m, "Guía": _rng(g.get(m), k), "Real": _fmt(r, k),
                          "": {"Por encima": "🟢", "Dentro": "🟡", "Por debajo": "🔴"}.get(v, "")})
-        for m, k in [("ARR total", "m"), ("ARR Digital Media", "m"), ("Caja operativa", "m"), ("RPO", "m"), ("Acciones recompradas (M)", "ps")]:
+        for m, k in [("ARR total", "m"), ("ARR Digital Media", "m"), ("Caja operativa", "m"), ("RPO", "m"), ("Acciones recompradas (M)", "sh")]:
             if q["real"].get(m) is not None:
                 rows.append({"Métrica": m, "Guía": "", "Real": _fmt(q["real"][m], k), "": ""})
         st.dataframe(pd.DataFrame(rows).set_index("Métrica"), width="stretch", height=38 + 35 * len(rows))

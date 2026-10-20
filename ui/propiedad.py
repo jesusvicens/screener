@@ -75,9 +75,11 @@ def tab(T: str, ca):
         t = t.head(200).copy()
         t["Fecha"] = t["Fecha"].dt.strftime("%d/%m/%Y")
         t["Plan 10b5-1"] = t["Plan 10b5-1"].map({True: "Sí", False: ""})
-        show_cols_table(t[["Fecha", "Quién", "Cargo", "Operación", "Acciones", "Precio", "Importe", "Tras la operación", "Plan 10b5-1", "url"]],
+        t = t.rename(columns={"Acciones": "Nº acciones", "Importe": "Importe ($)", "Tras la operación": "Nº acciones tras la operación"})
+        show_cols_table(t[["Fecha", "Quién", "Cargo", "Operación", "Nº acciones", "Precio", "Importe ($)", "Nº acciones tras la operación",
+                           "Plan 10b5-1", "url"]],
                         height=min(38 + 35 * len(t), 460),
-                        kinds={"Acciones": "m", "Precio": "ps", "Importe": "m", "Tras la operación": "m"},
+                        kinds={"Nº acciones": "m", "Precio": "ps", "Importe ($)": "m", "Nº acciones tras la operación": "m"},
                         column_config={"url": st.column_config.LinkColumn("Documento", display_text="ver")})
 
     st.markdown("## Superinversores que la tienen (13F)")
@@ -105,10 +107,10 @@ def tab(T: str, ca):
         c[2].metric("La reducen o venden", f"{h[h['Cambio'].isin(['Baja', 'Vendida'])]['fondo'].nunique()}")
         t = h.assign(Cambio=h["Cambio"].map(CAMBIO_ICON))[["fondo", "gestor", "emisor", "peso", "valor", "acciones", "Cambio", "Var. acciones", "trimestre"]]
         t = t.rename(columns={"fondo": "Fondo", "gestor": "Gestor", "emisor": "Título", "peso": "Peso en cartera", "valor": "Valor ($)",
-                              "acciones": "Acciones", "trimestre": "Trimestre"})
+                              "acciones": "Nº acciones", "trimestre": "Trimestre"})
         t["Valor ($)"] = t["Valor ($)"] / 1e6
         t = t.rename(columns={"Valor ($)": "Valor (M$)"})
         show_cols_table(t.set_index("Fondo"), height=38 + 35 * len(t),
-                        kinds={"Peso en cartera": "pct", "Valor (M$)": "m", "Acciones": "m", "Var. acciones": "pct"})
+                        kinds={"Peso en cartera": "pct", "Valor (M$)": "m", "Nº acciones": "m", "Var. acciones": "pct"})
     with st.expander("Fondos seguidos"):
         st.markdown(" · ".join(f"**{k}** ({v[1]})" for k, v in S.FUNDS.items()))

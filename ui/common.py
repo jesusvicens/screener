@@ -151,6 +151,29 @@ def fmt_cell(v, kind):
 INDENT = "\u2003"  # sangría para las partidas de detalle
 
 
+UNIT_MARKERS = ("(m", "m$", "$", "€", "(%", "%)", "veces", "(acciones", "millones", "(nº", "nº ", "(días", "(años", "(0-10", "/10", "(x)")
+NO_UNIT = ("nota", "puntos", "prioridad", "per ", "precio (0-10", "preguntas", "años", "puesto", "menciones", "fase", "veredicto")
+
+
+def with_unit(label, kind: str, currency: str = "$") -> str:
+    """Añade la unidad al nombre si no la lleva: importes en millones → «(M$)», datos por acción → «($)».
+
+    Los porcentajes y múltiplos ya se ven en la propia cifra (12,5 % · 14,6x). Las cantidades de acciones
+    van en millones salvo que el nombre diga otra cosa.
+    """
+    lab = str(label)
+    l = lab.lower().strip()
+    if kind == "sh" and not any(mk in l for mk in UNIT_MARKERS):
+        return f"{lab} (millones)"
+    if kind not in ("m", "ps") or any(mk in l for mk in UNIT_MARKERS) or l.startswith(NO_UNIT):
+        return lab
+    if kind == "m":
+        if "acciones" in l and "recompra" not in l and "emisión" not in l and "remuneración" not in l:
+            return f"{lab} (millones)"
+        return f"{lab} (M{currency})"
+    return f"{lab} ({currency})"
+
+
 def _mixed(col) -> bool:
     """Columna con textos y números a la vez: Arrow no la admite como número, así que se muestra como texto."""
     return col.dtype == object and any(isinstance(x, str) for x in col) and any(_isnum(x) for x in col)
@@ -167,8 +190,10 @@ def show_rows_table(df: pd.DataFrame, kinds: dict | None = None, height: int | N
     bold, indent = set(bold or ()), set(indent or ())
     out = df.copy()
     out.columns = [str(c) for c in out.columns]
-    labels = [(INDENT + str(i) if i in indent else str(i)) for i in out.index]
-    rk = {lab: (kinds.get(i) or kind_of(i)) for lab, i in zip(labels, df.index)}
+    kk = [(kinds.get(i) or kind_of(i)) for i in df.index]
+    has_num = [any(_isnum(x) for x in df.loc[i].tolist()) if i in df.index else False for i in df.index]
+    labels = [(INDENT if i in indent else "") + (with_unit(i, k) if hn else str(i)) for i, k, hn in zip(df.index, kk, has_num)]
+    rk = dict(zip(labels, kk))
     is_bold = {lab: i in bold for lab, i in zip(labels, df.index)}
     growth = {lab: is_growth(i) for lab, i in zip(labels, df.index)}
     out.index = labels
@@ -225,10 +250,14 @@ def show_cols_table(df: pd.DataFrame, height: int | None = None, kinds: dict | N
     Los valores siguen siendo números (al pulsar el título de una columna se ordena bien) y solo cambia cómo se muestran.
     Crecimientos y variaciones en verde (positivo) o rojo (negativo).
     """
-    kinds = kinds or {}
     column_config = column_config or {}
     out = df.copy()
     out = out.loc[:, ~out.columns.duplicated()]
+    kinds0 = kinds or {}
+    ren = {c: with_unit(c, kinds0.get(c) or kind_of(c)) for c in out.columns
+           if c not in column_config and any(_isnum(x) for x in out[c]) and not any(isinstance(x, str) for x in out[c])}
+    kinds = {ren.get(c, c): (kinds0.get(c) or kind_of(c)) for c in out.columns}
+    out = out.rename(columns=ren)
     for c in out.columns:
         if c not in column_config and out[c].dtype == object and all((x is None) or _isnum(x) or x != x for x in out[c]):
             out[c] = pd.to_numeric(out[c], errors="coerce")  # números con huecos (None) → numérica, para que no salga «None»
@@ -248,7 +277,7 @@ def show_cols_table(df: pd.DataFrame, height: int | None = None, kinds: dict | N
 
 def kv_table(d: dict):
     rows = [fmt_cell(v, kind_of(k)) for k, v in d.items()]
-    df = pd.DataFrame({"Valor": rows}, index=[str(k) for k in d.keys()])
+    df = pd.DataFrame({"Valor": rows}, index=[with_unit(k, kind_of(k)) if not isinstance(v, str) else str(k) for k, v in d.items()])
     st.dataframe(df, width="stretch", height=38 + 35 * len(df),
                  column_config={"Valor": st.column_config.TextColumn("Valor", alignment="right")})
 

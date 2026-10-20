@@ -57,11 +57,11 @@ def _ratio_block(ca, key: str, label: str, unit_name: str, bases: dict):
         if not b or b <= 0:
             continue
         bp = B.band_prices(pcts, b)
-        rows.append({"Sobre": f"{name} ({num(b, 2)} $)"} | {f"p{int(p * 100)}": v for p, v in bp.items()}
+        rows.append({"Sobre": f"{name} ({num(b, 2)} $)"} | {f"Precio a p{int(p * 100)} ($)": v for p, v in bp.items()}
                     | {"Potencial a la mediana": (bp[0.5] / P - 1) if P else None})
     if rows:
         t = pd.DataFrame(rows).set_index("Sobre")
-        st.markdown(f"**Precio por acción si cotizara a cada percentil de su {label} histórico**")
+        st.markdown(f"**Precio por acción ($) si cotizara a cada percentil de su {label} histórico**")
         show_cols_table(t, height=38 + 35 * len(t), kinds={**{c: "ps" for c in t.columns}, "Potencial a la mediana": "pct"})
     fig = _band_chart(ca, ps, pcts, label, unit_name)
     if fig:
@@ -78,8 +78,8 @@ def tab(T: str, ca):
     st.markdown("## BPA normalizado")
     if norm:
         c = st.columns(4)
-        c[0].metric("BPA último ejercicio", num(norm["bpa_ultimo"], 2), f"margen neto {pct(norm['margen_ultimo'])}", delta_color="off", delta_arrow="off")
-        c[1].metric("BPA normalizado", num(norm["bpa_normalizado"], 2), f"margen medio {norm['años']} años {pct(norm['margen_medio'])}",
+        c[0].metric("BPA último ejercicio", f'{num(norm["bpa_ultimo"], 2)} $', f"margen neto {pct(norm['margen_ultimo'])}", delta_color="off", delta_arrow="off")
+        c[1].metric("BPA normalizado", f'{num(norm["bpa_normalizado"], 2)} $', f"margen medio {norm['años']} años {pct(norm['margen_medio'])}",
                     delta_color="off", delta_arrow="off",
                     help="Ventas del último año × margen neto medio de los últimos años ÷ acciones. Quita el efecto de un año excepcional.")
         c[2].metric("PER sobre el último", mult(P / norm["bpa_ultimo"]) if (P and norm["bpa_ultimo"] and norm["bpa_ultimo"] > 0) else "—")
@@ -134,5 +134,5 @@ def tab(T: str, ca):
                + (f" La columna PER {round(med)} es la mediana histórica." if med else ""))
     sty = ret.style.format(lambda v: fmt_cell(v, "pct"), na_rep="—").map(_css)
     st.dataframe(sty, width="stretch", height=38 + 35 * len(ret))
-    with st.expander(f"Precio por acción dentro de {nn} años en cada caso"):
+    with st.expander(f"Precio por acción ($) dentro de {nn} años en cada caso"):
         show_cols_table(px, height=38 + 35 * len(px), kinds={c: "ps" for c in px.columns})

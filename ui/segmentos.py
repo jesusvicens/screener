@@ -60,6 +60,7 @@ def tab(T: str, ca):
         c2.plotly_chart(fig, width="stretch", key=f"segw_{T}_{tp}")
         t = p.copy()
         t.columns = [str(c) for c in t.columns]
+        t.index.name = f"{tp} · ventas en millones de $"
         g = p.pct_change(axis=1, fill_method=None).iloc[:, -1]
         cagr = None
         if p.shape[1] >= 4:
