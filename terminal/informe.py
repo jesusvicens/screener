@@ -20,9 +20,12 @@ MUTED = RGBColor(0x6B, 0x72, 0x80)
 def _runs(par, text: str):
     """Negritas (**x**), cursivas (*x*) y enlaces [t](url) dentro de un párrafo."""
     text = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)", r"\1 (\2)", text)
+    text = text.replace("\\*", "\x00")  # asteriscos escapados: literales, no negrita
+    text = re.sub(r"\\([\\`_{}\[\]()#+\-.!$|~<>])", r"\1", text)
     for part in re.split(r"(\*\*[^*]+\*\*|\*[^*]+\*)", text):
         if not part:
             continue
+        part = part.replace("\x00", "*")
         if part.startswith("**") and part.endswith("**"):
             r = par.add_run(part[2:-2])
             r.bold = True
