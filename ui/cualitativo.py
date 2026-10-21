@@ -1,6 +1,7 @@
 """Pestaña «Cualitativo y documentos» de la ficha: tu análisis cualitativo y los documentos de la empresa en OneDrive."""
 from __future__ import annotations
 
+import html
 import time
 
 import streamlit as st
@@ -43,27 +44,56 @@ def _secciones(txt: str) -> tuple[str, list[tuple[str, str]]]:
     return "\n".join(intro).strip(), [(t, "\n".join(c).strip()) for t, c in secs]
 
 
+def _slug(i: int) -> str:
+    return f"dossier-sec-{i}"
+
+
+def _dossier_doc(intro: str, secs: list[tuple[str, str]]):
+    """El dossier como un documento: índice vertical a la izquierda (fijo al hacer scroll) y todo el texto seguido."""
+    st.markdown("""<style>
+    div[data-testid="stColumn"]:has(.st-key-dossier_indice) { position: sticky; top: 4.5rem; align-self: flex-start; z-index: 2; }
+    .st-key-dossier_indice { border-right: 1px solid #e5e7eb; padding-right: .6rem; }
+    .st-key-dossier_indice a { display: block; padding: .28rem .4rem; border-radius: 4px; color: #1f2937; text-decoration: none;
+        font-size: .9rem; line-height: 1.25; }
+    .st-key-dossier_indice a:hover { background: #eef3fa; color: #1a5fb4; }
+    .st-key-dossier_indice .idx-title { font-size: .75rem; font-weight: 700; letter-spacing: .04em; color: #6b7280;
+        text-transform: uppercase; margin: .2rem .4rem .5rem; }
+    .dossier-sec { scroll-margin-top: 5rem; }
+    </style>""", unsafe_allow_html=True)
+    left, right = st.columns([1, 3.6], gap="large")
+    with left:
+        with st.container(key="dossier_indice"):
+            links = "".join(f"<a href='#{_slug(i)}'>{i + 1}. {html.escape(t)}</a>" for i, (t, _b) in enumerate(secs))
+            st.markdown(f"<div class='idx-title'>Índice</div>{links}", unsafe_allow_html=True)
+    with right:
+        if intro:
+            st.caption(intro.strip("*").replace("$", "\\$"))
+        for i, (t, body) in enumerate(secs):
+            st.markdown(f"<div id='{_slug(i)}' class='dossier-sec'></div>", unsafe_allow_html=True)
+            st.markdown(f"## {i + 1}. {t}")
+            st.markdown(body.replace("$", "\\$"))
+
+
 def tab(T: str, ca, answers: dict, motivos: dict):
     k = f"dossier_{T}"
     if k not in st.session_state:
         st.session_state[k] = (storage.load(T) or {}).get("dossier", "")
     intro, secs = _secciones(st.session_state[k])
-    if intro:
-        st.caption(intro.strip("*").replace("$", "\\$"))
-    names = ["Examen cualitativo"] + [t for t, _ in secs] + ["Documentos", "✏️ Editar dossier"]
+    names = (["Dossier"] if secs else []) + ["Examen cualitativo", "Documentos", "✏️ Editar dossier"]
     tabs = st.tabs(names, key=f"cual_tabs_{T}")
-    with tabs[0]:
+    i = 0
+    if secs:
+        with tabs[0]:
+            _dossier_doc(intro, secs)
+        i = 1
+    with tabs[i]:
         _resumen_cualitativo(T, ca, answers, motivos)
         if not secs:
             st.info("Aún no hay dossier para esta empresa. Pídemelo en el chat (leo tus documentos de OneDrive y el 10-K) o escríbelo "
-                    "en «✏️ Editar dossier»: cada título que empiece por «### » se convierte en una pestaña.")
-    for (t, body), tb in zip(secs, tabs[1:1 + len(secs)]):
-        with tb:
-            st.markdown(f"## {t}")
-            st.markdown(body.replace("$", "\\$"))
-    with tabs[-2]:
+                    "en «✏️ Editar dossier»: cada título que empiece por «### » se convierte en un apartado del índice.")
+    with tabs[i + 1]:
         _documentos(T, ca)
-    with tabs[-1]:
+    with tabs[i + 2]:
         _dossier_editor(T)
 
 
@@ -97,7 +127,7 @@ def _resumen_cualitativo(T, ca, answers, motivos):
 def _dossier_editor(T):
     k = f"dossier_{T}"
     txt = st.session_state.get(k, "")
-    st.caption("El dossier admite Markdown. Cada título que empiece por «### » se muestra como una pestaña aparte.")
+    st.caption("El dossier admite Markdown. Cada título que empiece por «### » es un apartado del índice.")
     new = st.text_area("Dossier", value=txt, height=520, key=f"dossier_ed_{T}", label_visibility="collapsed")
     if st.button("Guardar dossier", key=f"dossier_save_{T}", type="primary"):
         data = storage.load(T) or {}
