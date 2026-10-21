@@ -194,6 +194,13 @@ def page():
         st.warning("No he podido obtener la cotización. Escribe el precio a mano en «Escenarios y valoración» para valorar.")
 
     _header(ca)
+    if saved and not st.session_state.get(f"od_sync_{T}"):  # informe de OneDrive al día (en segundo plano, una vez por sesión)
+        st.session_state[f"od_sync_{T}"] = True
+        try:
+            from terminal import sync_onedrive
+            sync_onedrive.sync_async(T)
+        except Exception:  # noqa: BLE001
+            pass
     _save_bar(T, work, ca)
 
     def _cual():
@@ -239,13 +246,36 @@ def page():
     }
     if st.session_state.get("ficha_grupo") not in grupos:
         st.session_state["ficha_grupo"] = next(iter(grupos))
-    g = st.segmented_control("Sección", list(grupos), key="ficha_grupo", label_visibility="collapsed", width="stretch", required=True)
+    st.html(_GRUPOS_CSS)
+    with st.container(key="ficha_grupos"):
+        g = st.segmented_control("Sección", list(grupos), key="ficha_grupo", label_visibility="collapsed", width="stretch", required=True)
+    gi = list(grupos).index(g) if g in grupos else 0
+    # las pestañas del grupo abierto se subrayan con el color del grupo
+    st.html(f"<style>.stTabs [data-baseweb='tab-highlight']{{background-color:{_GRUPO_COLORES[gi]} !important}}"
+            f".stTabs [aria-selected='true'] p{{color:{_GRUPO_COLORES[gi]} !important}}</style>")
     pestañas = grupos[g or next(iter(grupos))]
     tabs = st.tabs([n for n, _ in pestañas], key=f"ficha_tabs_{list(grupos).index(g) if g in grupos else 0}", on_change="rerun")
     for (n, fn), tb in zip(pestañas, tabs):
         if tb.open:
             with tb:
                 fn()
+
+
+# Datos (azul), Análisis (violeta), Valoración (verde), Propiedad y fuentes (naranja): texto blanco legible en todos
+_GRUPO_COLORES = ["#1d4ed8", "#6d28d9", "#047857", "#c2410c"]
+_GRUPOS_CSS = "<style>" + "".join(
+    f".st-key-ficha_grupos [data-testid='stButtonGroup'] button:nth-of-type({i + 1}){{"
+    f"background:{c} !important;border-color:{c} !important;opacity:.45;transition:all .15s}}"
+    f".st-key-ficha_grupos [data-testid='stButtonGroup'] button:nth-of-type({i + 1}):hover{{opacity:.85}}"
+    for i, c in enumerate(_GRUPO_COLORES)
+) + (
+    ".st-key-ficha_grupos [data-testid='stButtonGroup'] button{color:#fff !important;font-weight:600;"
+    "border-radius:10px !important;margin:0 3px;padding:.55rem .8rem;flex:1 1 0}"
+    ".st-key-ficha_grupos [data-testid='stButtonGroup'] button *{color:#fff !important}"
+    ".st-key-ficha_grupos [data-testid='stButtonGroup'] button[aria-checked='true']{opacity:1 !important;outline:2px solid rgba(255,255,255,.9);outline-offset:-4px;"
+    "box-shadow:0 3px 10px rgba(0,0,0,.25);transform:translateY(-1px)}"
+    "</style>"
+)
 
 
 def _header(ca: pipeline.CompanyAnalysis):

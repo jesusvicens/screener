@@ -76,8 +76,8 @@ def _dossier_doc(intro: str, secs: list[tuple[str, str]]):
 
 def tab(T: str, ca, answers: dict, motivos: dict):
     k = f"dossier_{T}"
-    if k not in st.session_state:
-        st.session_state[k] = (storage.load(T) or {}).get("dossier", "")
+    # se lee siempre de lo guardado: así se ven al momento los cambios hechos fuera de la app (p. ej. por Claude)
+    st.session_state[k] = (storage.load(T) or {}).get("dossier", "")
     intro, secs = _secciones(st.session_state[k])
     names = (["Dossier"] if secs else []) + ["Examen cualitativo", "Documentos", "✏️ Editar dossier"]
     tabs = st.tabs(names, key=f"cual_tabs_{T}")
@@ -153,7 +153,9 @@ def _documentos(T, ca):
         return
     cfg = OD.settings()
     top = st.columns([3, 1])
-    top[0].caption(f"Conectado como {cfg.get('cuenta') or 'tu cuenta'} · solo lectura · raíz: {cfg['raiz']}")
+    top[0].caption(f"Conectado como {cfg.get('cuenta') or 'tu cuenta'} · {'lectura y escritura del informe' if OD.can_write() else 'solo lectura'}"
+                   f" · raíz: {cfg['raiz']}")
+    _informe_box(T)
     with top[1].popover("Ajustes", width="stretch"):
         root = st.text_input("Carpeta raíz de tus análisis", value=cfg["raiz"], help="Ruta dentro de tu OneDrive")
         if st.button("Guardar raíz") and root:
@@ -180,6 +182,8 @@ def _documentos(T, ca):
     if sel != (saved or "— Sin carpeta —") and c[1].button("Guardar carpeta", width="stretch"):
         OD.save_folder(T, None if sel.startswith("—") else sel)
         st.toast("Carpeta guardada")
+        from terminal import sync_onedrive
+        sync_onedrive.sync_async(T)
         st.rerun()
     if sel.startswith("—"):
         st.caption("Elige la carpeta de OneDrive donde tienes los documentos de esta empresa.")
@@ -195,6 +199,37 @@ def _documentos(T, ca):
     n_files = _count(items)
     st.markdown(f"**{n_files} documentos** en «{sel.rsplit('/', 1)[-1]}»")
     _render(items, T, level=0)
+
+
+def _informe_box(T: str):
+    """Estado del informe Word que la terminal mantiene en la carpeta de OneDrive de la empresa."""
+    from terminal import sync_onedrive
+    with st.container(border=True):
+        st.markdown("**Informe de la terminal en OneDrive** · un Word con todo lo de esta empresa (dossier, examen, notas, "
+                    "bitácora, estrategia, trimestres y valoración) que se actualiza solo cada vez que guardas o cambia el análisis.")
+        if not OD.can_write():
+            st.warning("Ahora la conexión es de **solo lectura**. Para que la terminal pueda guardar el informe en tu carpeta, vuelve a "
+                       "conectar y acepta el permiso de escritura (solo escribe su propio fichero «… - Análisis terminal.docx»; "
+                       "nunca modifica ni borra tus documentos).")
+            if st.button("Dar permiso de escritura (volver a conectar)", key=f"od_rw_{T}", type="primary"):
+                OD.disconnect()
+                st.session_state.pop("od_flow", None)
+                st.rerun()
+            return
+        s = sync_onedrive.status(T)
+        c = st.columns([4, 1.3])
+        if s:
+            icon = {"subido": "✅", "al_dia": "✅", "sin_carpeta": "📁", "error": "⚠️"}.get(s.get("estado"), "ℹ️")
+            txt = f"{icon} {s.get('mensaje', '')} ({s.get('cuando', '')})"
+            if s.get("url"):
+                txt += f" · [Abrir en OneDrive]({s['url']})"
+            c[0].markdown(txt)
+        else:
+            c[0].caption("Comprobando el informe en segundo plano…")
+        if c[1].button("Actualizar ahora", key=f"od_up_{T}", width="stretch"):
+            with st.spinner("Generando el Word y subiéndolo…"):
+                r = sync_onedrive.sync(T, force=True)
+            (st.success if r.get("estado") == "subido" else st.warning)(r.get("mensaje", ""))
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -234,7 +269,8 @@ def _render(items, T, level):
 
 
 def _login():
-    st.markdown("Conecta tu OneDrive para ver aquí los documentos de cada empresa. La app solo puede **leer** tus ficheros.")
+    st.markdown("Conecta tu OneDrive para ver aquí los documentos de cada empresa y guardar en su carpeta el informe de la terminal. "
+                "La app lee tus ficheros y solo **escribe su propio informe** («… - Análisis terminal.docx»).")
     flow = st.session_state.get("od_flow")
     if not flow:
         if st.button("Conectar OneDrive", type="primary"):

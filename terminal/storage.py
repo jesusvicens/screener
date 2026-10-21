@@ -60,6 +60,19 @@ def load(ticker: str) -> dict:
 
 
 def save(ticker: str, data: dict) -> str:
+    msg = _save(ticker, data)
+    if not ticker.startswith("_"):  # el informe de la empresa en OneDrive, en segundo plano
+        try:
+            from . import sync_onedrive
+            saved = dict(data)
+            saved["ticker"], saved["actualizado"] = ticker.upper(), datetime.now().strftime("%Y-%m-%d %H:%M")
+            sync_onedrive.sync_async(ticker, saved, force=True)
+        except Exception:  # noqa: BLE001
+            pass
+    return msg
+
+
+def _save(ticker: str, data: dict) -> str:
     t = ticker.upper()
     data = dict(data)
     data["ticker"] = t

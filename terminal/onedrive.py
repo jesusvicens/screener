@@ -1,4 +1,4 @@
-"""Conexión de solo lectura con tu OneDrive personal (Microsoft Graph).
+"""Conexión con tu OneDrive personal (Microsoft Graph): lee tus documentos y guarda el informe de la terminal.
 
 Configuración (una vez):
 1. Registra una aplicación en https://entra.microsoft.com (App registrations → New registration), con
@@ -7,7 +7,9 @@ Configuración (una vez):
 3. Pon el client id en DEFAULT_CLIENT_ID (abajo) o en los Secrets como ONEDRIVE_CLIENT_ID
 4. En la ficha de una empresa → pestaña «Cualitativo y documentos» → «Conectar OneDrive» y entra con tu cuenta.
 
-Permisos que pide: Files.Read (leer tus ficheros, no puede modificar ni borrar nada), offline_access y User.Read.
+Permisos que pide: Files.ReadWrite (leer tus ficheros y guardar el informe «… - Análisis terminal.docx» en la carpeta de
+cada empresa; nunca modifica ni borra tus propios documentos), offline_access y User.Read.
+Si conectaste antes con Files.Read (solo lectura), sigue funcionando para leer hasta que vuelvas a conectar.
 El token de renovación se guarda en tu repo privado de datos (documento _ONEDRIVE).
 """
 from __future__ import annotations
@@ -23,7 +25,8 @@ from . import storage
 
 AUTH = "https://login.microsoftonline.com/consumers/oauth2/v2.0"
 GRAPH = "https://graph.microsoft.com/v1.0"
-SCOPES = "Files.Read offline_access User.Read"
+SCOPES = "Files.ReadWrite offline_access User.Read"
+OLD_SCOPES = "Files.Read offline_access User.Read"
 DOC = "_ONEDRIVE"
 DEFAULT_ROOT = "Escritorio/AA. Jesús Vicens Noguer/INVERSIONS/00. SILVER LEGACY"
 
@@ -64,6 +67,11 @@ def connected() -> bool:
     return bool(_doc().get("refresh_token"))
 
 
+def can_write() -> bool:
+    """True si al conectar diste permiso de escritura (para guardar el informe de la terminal)."""
+    return "ReadWrite" in (_doc().get("permisos") or "")
+
+
 def _save(**kw):
     d = _doc()
     d.update(kw)
@@ -88,7 +96,7 @@ def save_folder(ticker: str, path: str | None):
 
 def disconnect():
     d = _doc()
-    for k in ("refresh_token", "cuenta", "conectado", "rt_guardado"):
+    for k in ("refresh_token", "cuenta", "conectado", "rt_guardado", "permisos"):
         d.pop(k, None)
     d.pop("ticker", None)
     d.pop("actualizado", None)
@@ -122,7 +130,7 @@ def poll_login(device_code: str) -> str:
         except Exception:  # noqa: BLE001
             pass
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        _save(refresh_token=j["refresh_token"], cuenta=name, conectado=now, rt_guardado=now)
+        _save(refresh_token=j["refresh_token"], cuenta=name, conectado=now, rt_guardado=now, permisos=SCOPES)
         return "ok"
     err = j.get("error", "")
     if err in ("authorization_pending", "slow_down"):
@@ -138,7 +146,7 @@ def _access_token() -> str:
     if not rt:
         raise OneDriveError("OneDrive no está conectado.")
     r = requests.post(f"{AUTH}/token", timeout=30, data={
-        "grant_type": "refresh_token", "client_id": client_id(), "refresh_token": rt, "scope": SCOPES})
+        "grant_type": "refresh_token", "client_id": client_id(), "refresh_token": rt, "scope": d.get("permisos") or OLD_SCOPES})
     j = r.json()
     if r.status_code != 200:
         raise OneDriveError("La conexión con OneDrive ha caducado: vuelve a conectar. (" + (j.get("error") or "") + ")")
@@ -233,3 +241,32 @@ def guess_folder(folders: list[str], ticker: str, name: str) -> str | None:
         if leaf == t or leaf == n or (first and (leaf == first or leaf.split()[0] == first)):
             return f
     return None
+
+
+# ---------------------------------------------------------------- escribir (solo el informe de la terminal)
+def item_info(path: str) -> dict | None:
+    """Metadatos de un fichero (None si no existe)."""
+    r = requests.get(f"{GRAPH}/me/drive/root:/{quote(path.strip('/'))}", headers={"Authorization": f"Bearer {_access_token()}"},
+                     params={"$select": "id,name,lastModifiedDateTime,webUrl,size,description"}, timeout=30)
+    if r.status_code == 404:
+        return None
+    if r.status_code != 200:
+        raise OneDriveError(f"OneDrive respondió {r.status_code}: {r.text[:200]}")
+    return r.json()
+
+
+def set_description(item_id: str, text: str):
+    requests.patch(f"{GRAPH}/me/drive/items/{item_id}", json={"description": text[:1000]}, timeout=30,
+                   headers={"Authorization": f"Bearer {_access_token()}"})
+
+
+def upload(folder: str, filename: str, content: bytes, mime: str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document") -> dict:
+    """Crea o sustituye folder/filename (solo se usa para el informe de la terminal, nunca para tus documentos)."""
+    if not can_write():
+        raise OneDriveError("La conexión con OneDrive es de solo lectura: vuelve a conectar para dar permiso de escritura.")
+    path = f"{folder.strip('/')}/{filename}"
+    r = requests.put(f"{GRAPH}/me/drive/root:/{quote(path)}:/content", data=content, timeout=120,
+                     headers={"Authorization": f"Bearer {_access_token()}", "Content-Type": mime})
+    if r.status_code not in (200, 201):
+        raise OneDriveError(f"No he podido guardar en OneDrive ({r.status_code}): {r.text[:200]}")
+    return r.json()
