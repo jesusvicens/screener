@@ -250,9 +250,7 @@ def page():
     with st.container(key="ficha_grupos"):
         g = st.segmented_control("Sección", list(grupos), key="ficha_grupo", label_visibility="collapsed", width="stretch", required=True)
     gi = list(grupos).index(g) if g in grupos else 0
-    # las pestañas del grupo abierto se subrayan con el color del grupo
-    st.html(f"<style>.stTabs [data-baseweb='tab-highlight']{{background-color:{_GRUPO_COLORES[gi]} !important}}"
-            f".stTabs [aria-selected='true'] p{{color:{_GRUPO_COLORES[gi]} !important}}</style>")
+    st.html(_barra_css(gi))
     pestañas = grupos[g or next(iter(grupos))]
     tabs = st.tabs([n for n, _ in pestañas], key=f"ficha_tabs_{list(grupos).index(g) if g in grupos else 0}", on_change="rerun")
     for (n, fn), tb in zip(pestañas, tabs):
@@ -263,11 +261,35 @@ def page():
 
 # Datos (azul), Análisis (violeta), Valoración (verde), Propiedad y fuentes (naranja): texto blanco legible en todos
 _GRUPO_COLORES = ["#1d4ed8", "#6d28d9", "#047857", "#c2410c"]
+_GRUPO_DEGRADADOS = [("#1e3a8a", "#2563eb"), ("#4c1d95", "#7c3aed"), ("#064e3b", "#059669"), ("#9a3412", "#ea580c")]
+
+
+def _barra_css(gi: int) -> str:
+    """Barra de pestañas del grupo abierto: a todo el ancho, degradado del color del grupo y texto blanco.
+    Solo la barra principal (selectores hijo directo): las pestañas anidadas solo toman el color del grupo."""
+    a, b = _GRUPO_DEGRADADOS[gi]
+    k = f".st-key-ficha_tabs_{gi} > div > [role='tablist']"
+    return (
+        "<style>"
+        f"{k}{{display:flex;width:100%;background:linear-gradient(90deg,{a},{b});border-radius:10px;padding:4px;gap:4px;"
+        "box-shadow:0 2px 8px rgba(0,0,0,.12);border:none}"
+        f"{k} > [role='tab']{{flex:1 1 0;justify-content:center;text-align:center;border-radius:7px;padding:.5rem .6rem;"
+        "margin:0;transition:background .15s}"
+        f"{k} > [role='tab'] p, {k} > [role='tab'] span{{color:rgba(255,255,255,.85) !important;font-weight:500}}"
+        f"{k} > [role='tab']:hover{{background:rgba(255,255,255,.12)}}"
+        f"{k} > [role='tab'][aria-selected='true']{{background:rgba(255,255,255,.24);box-shadow:inset 0 -3px 0 #fff}}"
+        f"{k} > [role='tab'][aria-selected='true'] p, {k} > [role='tab'][aria-selected='true'] span"
+        "{color:#fff !important;font-weight:700}"
+        f"{k} .react-aria-SelectionIndicator{{display:none}}"
+        f".stTabs [role='tab'][aria-selected='true'] p{{color:{_GRUPO_COLORES[gi]}}}"
+        f".stTabs .react-aria-SelectionIndicator{{background-color:{_GRUPO_COLORES[gi]} !important}}"
+        "</style>"
+    )
 _GRUPOS_CSS = "<style>" + "".join(
     f".st-key-ficha_grupos [data-testid='stButtonGroup'] button:nth-of-type({i + 1}){{"
-    f"background:{c} !important;border-color:{c} !important;opacity:.45;transition:all .15s}}"
+    f"background:linear-gradient(90deg,{a},{b}) !important;border-color:{a} !important;opacity:.45;transition:all .15s}}"
     f".st-key-ficha_grupos [data-testid='stButtonGroup'] button:nth-of-type({i + 1}):hover{{opacity:.85}}"
-    for i, c in enumerate(_GRUPO_COLORES)
+    for i, (a, b) in enumerate(_GRUPO_DEGRADADOS)
 ) + (
     ".st-key-ficha_grupos [data-testid='stButtonGroup'] button{color:#fff !important;font-weight:600;"
     "border-radius:10px !important;margin:0 3px;padding:.55rem .8rem;flex:1 1 0}"
