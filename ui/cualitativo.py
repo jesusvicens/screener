@@ -59,13 +59,16 @@ def _dossier_doc(intro: str, secs: list[tuple[str, str]]):
     .st-key-dossier_indice .idx-title { font-size: .75rem; font-weight: 700; letter-spacing: .04em; color: #6b7280;
         text-transform: uppercase; margin: .2rem .4rem .5rem; }
     .dossier-sec { scroll-margin-top: 5rem; }
+    .st-key-dossier_texto h4 { font-size: 1.08rem !important; font-weight: 700 !important; color: #1a5fb4; padding: .9rem 0 .2rem !important; }
+    .st-key-dossier_texto h5 { font-size: 1rem !important; font-weight: 700 !important; color: #374151; padding: .6rem 0 .1rem !important; }
+    .st-key-dossier_texto h6 { font-size: .95rem !important; font-weight: 600 !important; font-style: italic; color: #4b5563; }
     </style>""", unsafe_allow_html=True)
     left, right = st.columns([1, 3.6], gap="large")
     with left:
         with st.container(key="dossier_indice"):
             links = "".join(f"<a href='#{_slug(i)}'>{i + 1}. {html.escape(t)}</a>" for i, (t, _b) in enumerate(secs))
             st.markdown(f"<div class='idx-title'>Índice</div>{links}", unsafe_allow_html=True)
-    with right:
+    with right, st.container(key="dossier_texto"):
         if intro:
             st.caption(intro.strip("*").replace("$", "\\$"))
         for i, (t, body) in enumerate(secs):
