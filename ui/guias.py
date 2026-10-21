@@ -61,13 +61,16 @@ def tab(T: str, ca):
         return
     st.caption(f"{data.get('fuente', '')} {data.get('unidades', '')} Actualizado: {data.get('actualizado', '')}.")
     names = ["Guía vs. resultado", "Evolución de la guía anual", "Trimestre a trimestre", "Resultados trimestrales (SEC)"]
+    extra = []
     if data.get("estrategia_anual"):
-        names = ["Estrategia año a año"] + names
-    tabs = st.tabs(names, key=f"guias_tabs_{T}")
-    if data.get("estrategia_anual"):
-        with tabs[0]:
-            _estrategia(data)
-        tabs = tabs[1:]
+        extra.append(("Estrategia año a año", lambda: _estrategia(data)))
+    if data.get("kpis"):
+        extra.append(("KPIs y segmentos: dicho vs. hecho", lambda: _kpis(ca, data)))
+    tabs = st.tabs([n for n, _ in extra] + names, key=f"guias_tabs_{T}")
+    for (n, fn), tb in zip(extra, tabs):
+        with tb:
+            fn()
+    tabs = tabs[len(extra):]
     t1, t2, t3, t4 = tabs
     with t1:
         _guia_vs_real(qs, data)
@@ -77,6 +80,113 @@ def tab(T: str, ca):
         _trimestre(T, ca, qs)
     with t4:
         _xbrl(ca)
+
+
+KPI_COLS = [("uglob", "Unidades globales"), ("uaseg", "Unid. aseguradoras EE. UU."), ("uaseg_xc", "Aseg. EE. UU. sin catástrofes"),
+            ("unoaseg", "Unid. no aseguradoras EE. UU."), ("uint", "Unid. internacionales"), ("bluecar", "BlueCar"),
+            ("dealer", "Concesionarios"), ("ucomp", "Unid. compradas EE. UU."), ("aspg", "ASP global"), ("aspa", "ASP aseguradoras EE. UU."),
+            ("aspi", "ASP internacional"), ("inv", "Inventario")]
+PAL = ["#2f6db5", "#e07b24", "#2e8b57", "#7c5cbf", "#3a9fb5", "#6b7280"]
+
+
+def _kpi_chart(ks, keys, title, unit="% interanual"):
+    fig = go.Figure()
+    x = [k["q"].replace("FY20", "FY") for k in ks]
+    for i, (key, lab) in enumerate(keys):
+        y = [k.get(key) for k in ks]
+        if any(v is not None for v in y):
+            fig.add_scatter(x=x, y=y, name=lab, mode="lines+markers", connectgaps=True, line=dict(color=PAL[i % len(PAL)], width=2),
+                            marker=dict(size=7), hovertemplate="%{y:+.1f} %<extra>" + lab + "</extra>")
+    fig.add_hline(y=0, line_color="#c9ced6", line_width=1)
+    from ui.common import fig_layout
+    fig_layout(fig, title, h=360, unit=unit)
+    fig.update_yaxes(ticksuffix=" %")
+    fig.update_xaxes(tickangle=-45, tickfont=dict(size=10))
+    fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0, font=dict(size=11)), margin=dict(t=70))
+    return fig
+
+
+def _kpis(ca, data):
+    """Indicadores que la dirección cuenta en cada call + segmentos de los 10-Q, y su relación con la estrategia."""
+    ks = data["kpis"]
+    st.caption(data.get("kpis_fuente", ""))
+    c = st.columns(2)
+    c[0].plotly_chart(_kpi_chart(ks, [("uglob", "Globales"), ("uaseg", "Aseguradoras EE. UU."), ("uaseg_xc", "Aseg. EE. UU. sin catástrofes"),
+                                      ("uint", "Internacionales")], "Unidades vendidas"), width="stretch", key="kpi_u")
+    c[1].plotly_chart(_kpi_chart(ks, [("aspg", "Global"), ("aspa", "Aseguradoras EE. UU."), ("aspi", "Internacional")],
+                                 "Precio medio de venta (ASP)"), width="stretch", key="kpi_asp")
+    c = st.columns(2)
+    c[0].plotly_chart(_kpi_chart(ks, [("bluecar", "BlueCar"), ("dealer", "Concesionarios"), ("unoaseg", "No aseguradoras EE. UU."),
+                                      ("ucomp", "Coches comprados EE. UU.")], "No aseguradoras y coches comprados"), width="stretch", key="kpi_na")
+    tl = [k for k in ks if k.get("tlf") is not None]
+    if tl:
+        fig = go.Figure(go.Scatter(x=[k["tlf_per"] for k in tl], y=[k["tlf"] for k in tl], mode="lines+markers+text",
+                                   text=[f"{k['tlf']:.1f}".replace(".", ",") for k in tl], textposition="top center",
+                                   line=dict(color="#2f6db5", width=2), marker=dict(size=8),
+                                   hovertemplate="%{x}: %{y:.1f} %<extra>Pérdida total</extra>"))
+        fig.add_hline(y=21.7, line_dash="dash", line_color="#6b7280", line_width=1, annotation_text="máximo pre-COVID 21,7 %",
+                      annotation_position="bottom right")
+        from ui.common import fig_layout
+        fig_layout(fig, "Frecuencia de pérdida total en EE. UU. (CCC)", h=330, unit="% de los siniestros, por trimestre natural")
+        fig.update_yaxes(ticksuffix=" %")
+        fig.update_layout(showlegend=False)
+        c[1].plotly_chart(fig, width="stretch", key="kpi_tlf")
+    # segmentos trimestrales (XBRL)
+    try:
+        from terminal import segmentos as SG
+        sq = SG.quarterly(int(ca.meta["cik"]))
+        d = sq[sq["Tipo"] == "Segmento"].pivot_table(index="Fin", columns=["Dato", "Miembro"], values="Valor") if not sq.empty else None
+    except Exception:  # noqa: BLE001
+        d = None
+    if d is not None and not d.empty and "Ventas" in d:
+        st.markdown("#### Segmentos por trimestre (10-Q / 10-K)")
+        v = d["Ventas"]
+        o = d["Resultado operativo"] if "Resultado operativo" in d else None
+        x = [pd.Timestamp(i).strftime("%b %y") for i in v.index]
+        c = st.columns(2)
+        fig = go.Figure()
+        for i, m in enumerate(v.columns):
+            fig.add_scatter(x=x, y=list(v[m].pct_change(4) * 100), name=m, mode="lines+markers", line=dict(color=PAL[i], width=2),
+                            hovertemplate="%{y:+.1f} %<extra>" + m + "</extra>")
+        fig.add_hline(y=0, line_color="#c9ced6", line_width=1)
+        from ui.common import fig_layout
+        fig_layout(fig, "Crecimiento de las ventas por segmento", h=320, unit="% interanual")
+        fig.update_yaxes(ticksuffix=" %")
+        c[0].plotly_chart(fig, width="stretch", key="seg_g")
+        if o is not None:
+            fig = go.Figure()
+            for i, m in enumerate(v.columns):
+                if m in o:
+                    fig.add_scatter(x=x, y=list(o[m] / v[m] * 100), name=m, mode="lines+markers", line=dict(color=PAL[i], width=2),
+                                    hovertemplate="%{y:.1f} %<extra>" + m + "</extra>")
+            fig_layout(fig, "Margen operativo por segmento", h=320, unit="% de las ventas del segmento")
+            fig.update_yaxes(ticksuffix=" %")
+            c[1].plotly_chart(fig, width="stretch", key="seg_m")
+        tb = v.copy()
+        tb.columns = [f"Ventas {m} (M$)" for m in v.columns]
+        if o is not None:
+            for m in v.columns:
+                if m in o:
+                    tb[f"Margen op. {m}"] = o[m] / v[m]
+        tb.index = x
+        show_cols_table(tb.iloc[::-1], height=min(38 + 35 * len(tb), 420),
+                        kinds={c_: ("pct" if c_.startswith("Margen") else "m") for c_ in tb.columns})
+    if data.get("kpis_lectura"):
+        st.markdown("#### Lo que decían y lo que muestran los datos")
+        st.markdown(_md(data["kpis_lectura"]))
+    st.markdown("#### Tabla de indicadores por trimestre (lo dicho en cada call)")
+    rows = []
+    for k in ks:
+        r = {"Trimestre": k["q"], "Call": k.get("fecha")}
+        for key, lab in KPI_COLS:
+            r[lab] = (k.get(key) / 100) if k.get(key) is not None else None
+        r["Pérdida total"] = (f"{k['tlf']:.1f} % ({k['tlf_per']})".replace(".", ",") if k.get("tlf") is not None else (k.get("tlf_per") or ""))
+        r["Catástrofes y notas"] = k.get("cat") or ""
+        rows.append(r)
+    t = pd.DataFrame(rows[::-1]).set_index("Trimestre")
+    show_cols_table(t, height=min(38 + 35 * len(t), 700), kinds={lab: "pct" for _k, lab in KPI_COLS})
+    st.caption("Variaciones interanuales tal como las dijo la dirección (a veces «casi», «más de»); vacío = no lo dijeron en esa call. "
+               "Los nombres de cada indicador cambian algo con los años (p. ej. qué incluye «no aseguradoras»).")
 
 
 def _estrategia(data):
