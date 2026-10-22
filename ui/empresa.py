@@ -263,7 +263,7 @@ def page():
             (":material/dashboard: Resumen", lambda: _tab_resumen(ca)),
             (":material/show_chart: Histórico", lambda: _tab_historico(T, ca)),
             (":material/table_chart: Estados financieros", lambda: _tab_estados(ca)),
-            (":material/pie_chart: Segmentos", (lambda: _eu_info("segmentos")) if eu else _mod("segmentos", T, ca)),
+            (":material/pie_chart: Segmentos y tiendas" if eu else ":material/pie_chart: Segmentos", _mod("segmentos", T, ca)),
             (":material/flag: Guías y resultados", _guias),
         ],
         ":material/search: Análisis": [

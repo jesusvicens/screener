@@ -60,7 +60,9 @@ def tab(T: str, ca):
         _sin_guias(T, ca)
         return
     st.caption(f"{data.get('fuente', '')} {data.get('unidades', '')} Actualizado: {data.get('actualizado', '')}.")
-    names = ["Guía vs. resultado", "Evolución de la guía anual", "Trimestre a trimestre", "Resultados trimestrales (SEC)"]
+    eu = not int(ca.meta.get("cik") or 0)
+    names = ["Guía vs. resultado", "Evolución de la guía anual", "Trimestre a trimestre",
+             "Resultados publicados" if eu else "Resultados trimestrales (SEC)"]
     extra = []
     if data.get("estrategia_anual"):
         extra.append(("Estrategia año a año", lambda: _estrategia(data)))
@@ -241,7 +243,8 @@ def _sin_guia_numerica(qs, data):
         r = q.get("real") or {}
         rows.append({"Trimestre": q["trimestre"], "Publicado": q.get("publicado"), "Ingresos": _fmt(r.get("Ingresos"), "m"),
                      "Crec. interanual": fmt_cell(r.get("Crec. ingresos"), "pct") if r.get("Crec. ingresos") is not None else "—",
-                     "BPA GAAP": _fmt(r.get("BPA GAAP"), "ps"), "Tono": q.get("tono") or ""})
+                     "BPA": _fmt(r.get("BPA GAAP") if r.get("BPA GAAP") is not None else r.get("BPA"), "ps"),
+                     "Tono": q.get("tono") or ""})
     st.dataframe(pd.DataFrame(rows[::-1]).set_index("Trimestre"), width="stretch", height=min(38 + 35 * len(rows), 600))
 
 
@@ -477,9 +480,35 @@ def _transcripcion(T, ca, sel):
             components.iframe(url, height=900, scrolling=True)
 
 
+def _publicados(qs):
+    """Empresas europeas: tabla de lo publicado en cada presentación (trimestres, semestres y años)."""
+    rows = []
+    for q in qs:
+        r = q.get("real") or {}
+        row = {"Periodo": q["trimestre"], "Publicado": q.get("publicado")}
+        for k, v in r.items():
+            row[k] = v
+        rows.append(row)
+    df = pd.DataFrame(rows[::-1]).set_index("Periodo")
+    out = pd.DataFrame(index=df.index)
+    out["Publicado"] = df["Publicado"]
+    for c in df.columns:
+        if c == "Publicado":
+            continue
+        k = _kind(c)
+        lab = c if k == "pct" else (f"{c} ({cur()})" if k == "ps" else f"{c} (M{cur()})")
+        out[lab] = [fmt_cell(v, k) if v == v else "—" for v in pd.to_numeric(df[c], errors="coerce")]
+    st.caption("Lo que publicó la empresa en cada presentación (en el formato ESEF europeo solo va el informe anual). "
+               "Crecimientos frente al mismo periodo del año anterior.")
+    st.dataframe(out, width="stretch", height=min(38 + 35 * len(out), 700))
+
+
 def _xbrl(ca):
     if not int(ca.meta.get("cik") or 0):
-        return  # empresa europea: sin 10-Q
+        data = (storage.load(ca.fin.ticker) or {}).get("guias") or {}
+        if data.get("trimestres"):
+            _publicados(data["trimestres"])
+        return
     try:
         df = trimestres.quarterly(sec.company_facts(int(ca.meta["cik"])), n_years=5)
     except Exception as e:  # noqa: BLE001
