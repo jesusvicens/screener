@@ -29,9 +29,20 @@ class CompanyAnalysis:
 
 
 def load_company(ticker: str, n_years: int = 10) -> tuple[dict, F.Financials, pd.Series]:
-    meta = sec.find(ticker)
+    from . import esef
+    meta = None if esef.is_european(ticker) else sec.find(ticker)
     if not meta:
-        raise ValueError(f"No encuentro «{ticker}» en el registro de la SEC.")
+        meta = esef.find(ticker)
+        if not meta:
+            raise ValueError(f"No encuentro «{ticker}» ni en la SEC ni entre las cotizadas europeas.")
+        facts = esef.company_facts(meta["lei"], meta["name"])
+        fin = F.build(facts, meta["ticker"], n_years=n_years)
+        fin.name = meta["name"]
+        if facts.get("informes") is not None and len(fin.years) < 8:
+            fin.warnings.append(f"Empresa europea: {len(fin.years)} ejercicios en formato ESEF (obligatorio en la UE desde 2020; "
+                                "cada informe trae también el año anterior).")
+        hist = prices.history(meta["ticker"], years=n_years + 2)
+        return meta, fin, hist
     facts = sec.company_facts(meta["cik"])
     fin = F.build(facts, meta["ticker"], n_years=n_years)
     hist = prices.history(meta["ticker"], years=n_years + 2)

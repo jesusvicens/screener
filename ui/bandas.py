@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from terminal import bandas as B
-from ui.common import AMBER, BLUE, MUTED, NEG, POS, TEXT, fig_layout, fmt_cell, mult, num, pct, show_cols_table
+from ui.common import AMBER, cur, BLUE, MUTED, NEG, POS, TEXT, fig_layout, fmt_cell, mult, num, pct, show_cols_table
 from ui.historico import _clean_ratio, _daily_ratio
 
 BAND_COL = {0.10: "#9dbbe0", 0.25: "#6f9bd1", 0.50: BLUE, 0.75: "#6f9bd1", 0.90: "#9dbbe0"}
@@ -45,10 +45,10 @@ def _ratio_block(ca, key: str, label: str, unit_name: str, bases: dict):
         return None
     now = r.dropna().iloc[-1] if r.notna().any() else None
     P = ca.params.price
-    cur = (P / ps[-1]) if (P and ps and ps[-1] and ps[-1] > 0) else now
-    pr = (r.dropna() <= cur).mean() if cur else None
+    r_hoy = (P / ps[-1]) if (P and ps and ps[-1] and ps[-1] > 0) else now
+    pr = (r.dropna() <= r_hoy).mean() if r_hoy else None
     c = st.columns(6)
-    c[0].metric(f"{label} hoy", mult(cur), (f"percentil {pr * 100:.0f}" if pr is not None else None), delta_color="off", delta_arrow="off",
+    c[0].metric(f"{label} hoy", mult(r_hoy), (f"percentil {pr * 100:.0f}" if pr is not None else None), delta_color="off", delta_arrow="off",
                 help="Percentil: % de los días de la historia en que estuvo más barata que hoy. Bajo = barata frente a sí misma.")
     for i, p in enumerate((0.10, 0.25, 0.50, 0.75, 0.90)):
         c[i + 1].metric(f"Percentil {int(p * 100)}", mult(pcts[p]))
@@ -57,11 +57,11 @@ def _ratio_block(ca, key: str, label: str, unit_name: str, bases: dict):
         if not b or b <= 0:
             continue
         bp = B.band_prices(pcts, b)
-        rows.append({"Sobre": f"{name} ({num(b, 2)} $)"} | {f"Precio a p{int(p * 100)} ($)": v for p, v in bp.items()}
+        rows.append({"Sobre": f"{name} ({num(b, 2)} {cur()})"} | {f"Precio a p{int(p * 100)} ({cur()})": v for p, v in bp.items()}
                     | {"Potencial a la mediana": (bp[0.5] / P - 1) if P else None})
     if rows:
         t = pd.DataFrame(rows).set_index("Sobre")
-        st.markdown(f"**Precio por acción ($) si cotizara a cada percentil de su {label} histórico**")
+        st.markdown(f"**Precio por acción ({cur()}) si cotizara a cada percentil de su {label} histórico**")
         show_cols_table(t, height=38 + 35 * len(t), kinds={**{c: "ps" for c in t.columns}, "Potencial a la mediana": "pct"})
     fig = _band_chart(ca, ps, pcts, label, unit_name)
     if fig:
@@ -78,8 +78,8 @@ def tab(T: str, ca):
     st.markdown("## BPA normalizado")
     if norm:
         c = st.columns(4)
-        c[0].metric("BPA último ejercicio", f'{num(norm["bpa_ultimo"], 2)} $', f"margen neto {pct(norm['margen_ultimo'])}", delta_color="off", delta_arrow="off")
-        c[1].metric("BPA normalizado", f'{num(norm["bpa_normalizado"], 2)} $', f"margen medio {norm['años']} años {pct(norm['margen_medio'])}",
+        c[0].metric("BPA último ejercicio", f'{num(norm["bpa_ultimo"], 2)} {cur()}', f"margen neto {pct(norm['margen_ultimo'])}", delta_color="off", delta_arrow="off")
+        c[1].metric("BPA normalizado", f'{num(norm["bpa_normalizado"], 2)} {cur()}', f"margen medio {norm['años']} años {pct(norm['margen_medio'])}",
                     delta_color="off", delta_arrow="off",
                     help="Ventas del último año × margen neto medio de los últimos años ÷ acciones. Quita el efecto de un año excepcional.")
         c[2].metric("PER sobre el último", mult(P / norm["bpa_ultimo"]) if (P and norm["bpa_ultimo"] and norm["bpa_ultimo"] > 0) else "—")
@@ -129,10 +129,10 @@ def tab(T: str, ca):
             return f"color: {NEG}; background-color: #fdeeee;"
         return f"color: {TEXT};"
 
-    st.caption(f"Partiendo de {bname.lower()} {num(eps0, 2)} $ y precio {num(P, 2)} $. Filas: crecimiento anual del BPA; columnas: PER al que "
+    st.caption(f"Partiendo de {bname.lower()} {num(eps0, 2)} {cur()} y precio {num(P, 2)} {cur()}. Filas: crecimiento anual del BPA; columnas: PER al que "
                f"vendes dentro de {nn} años. **Verde = supera tu rentabilidad exigida ({pct(r)})**, rojo = pierdes dinero."
                + (f" La columna PER {round(med)} es la mediana histórica." if med else ""))
     sty = ret.style.format(lambda v: fmt_cell(v, "pct"), na_rep="—").map(_css)
     st.dataframe(sty, width="stretch", height=38 + 35 * len(ret))
-    with st.expander(f"Precio por acción ($) dentro de {nn} años en cada caso"):
+    with st.expander(f"Precio por acción ({cur()}) dentro de {nn} años en cada caso"):
         show_cols_table(px, height=38 + 35 * len(px), kinds={c: "ps" for c in px.columns})

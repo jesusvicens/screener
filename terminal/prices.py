@@ -13,7 +13,8 @@ import requests
 
 def history(ticker: str, years: int = 12) -> pd.Series:
     """Serie diaria de cierres ajustados (por splits). Vacía si no hay datos."""
-    t = ticker.upper().replace(".", "-")
+    from .esef import is_european
+    t = ticker.upper() if is_european(ticker) else ticker.upper().replace(".", "-")
     try:  # ficha guardada anoche en tu repo privado (empresas analizadas, en listas o en cartera)
         from . import remoto
         s = remoto.ficha_prices(t)
@@ -31,6 +32,8 @@ def history(ticker: str, years: int = 12) -> pd.Series:
     except Exception:
         pass
     try:
+        if is_european(t):
+            raise ValueError("Stooq: solo EE. UU.")
         url = f"https://stooq.com/q/d/l/?s={t.lower()}.us&i=d"
         r = requests.get(url, timeout=20)
         if r.ok and r.text.startswith("Date"):
@@ -70,7 +73,8 @@ def batch_last_prices(tickers: list[str]) -> dict[str, float]:
         return out
     try:
         import yfinance as yf
-        tk = [t.upper().replace(".", "-") for t in tickers]
+        from .esef import is_european
+        tk = [t.upper() if is_european(t) else t.upper().replace(".", "-") for t in tickers]
         for i in range(0, len(tk), 200):
             chunk = tk[i:i + 200]
             df = yf.download(chunk, period="5d", progress=False, auto_adjust=False, threads=True, group_by="column")

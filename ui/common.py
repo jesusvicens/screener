@@ -74,16 +74,34 @@ def mult(x, d=1):
     return es(f"{x:,.{d}f}") + "x" if _isnum(x) else ("—" if not isinstance(x, str) else x)
 
 
+SYMBOLS = {"USD": "$", "EUR": "€", "GBP": "£", "CHF": "CHF", "SEK": "SEK", "DKK": "DKK", "NOK": "NOK", "PLN": "PLN",
+           "CZK": "CZK", "HUF": "HUF", "JPY": "¥", "CAD": "C$", "AUD": "A$"}
+
+
+def set_currency(code: str | None) -> None:
+    """Divisa de la empresa abierta en la ficha (las demás páginas trabajan en $)."""
+    st.session_state["_cur"] = SYMBOLS.get((code or "USD").upper(), code or "$")
+
+
+def cur() -> str:
+    """Símbolo de la divisa en uso: «$», «€»…"""
+    try:
+        return st.session_state.get("_cur", "$")
+    except Exception:  # noqa: BLE001  (fuera de Streamlit)
+        return "$"
+
+
 def money(m, d=1) -> str:
-    """Importe en millones de $ → texto corto: 950 M$, 23,8 mil M$, 1,2 billones $."""
+    """Importe en millones → texto corto: 950 M$, 23,8 mil M$, 1,2 bill. $ (o en €, según la empresa)."""
     if not _isnum(m):
         return "—"
+    c = cur()
     a = abs(m)
     if a >= 1e6:
-        return num(m / 1e6, d) + " bill. $"
+        return num(m / 1e6, d) + f" bill. {c}"
     if a >= 1e3:
-        return num(m / 1e3, d) + " mil M$"
-    return num(m, 0) + " M$"
+        return num(m / 1e3, d) + f" mil M{c}"
+    return num(m, 0) + f" M{c}"
 
 
 PCT_HINTS = ("%", "margen", "roe", "roic", "crecimiento", "δ", "tasa", "rentabilidad", "variación de acciones", "probabilidad",
@@ -151,16 +169,17 @@ def fmt_cell(v, kind):
 INDENT = "\u2003"  # sangría para las partidas de detalle
 
 
-UNIT_MARKERS = ("(m", "m$", "$", "€", "(%", "%)", "veces", "(acciones", "millones", "(nº", "nº ", "(días", "(años", "(0-10", "/10", "(x)")
+UNIT_MARKERS = ("(m", "m$", "$", "€", "£", "chf", "sek", "dkk", "nok", "(%", "%)", "veces", "(acciones", "millones", "(nº", "nº ", "(días", "(años", "(0-10", "/10", "(x)")
 NO_UNIT = ("nota", "puntos", "prioridad", "per ", "precio (0-10", "preguntas", "años", "puesto", "menciones", "fase", "veredicto")
 
 
-def with_unit(label, kind: str, currency: str = "$") -> str:
+def with_unit(label, kind: str, currency: str | None = None) -> str:
     """Añade la unidad al nombre si no la lleva: importes en millones → «(M$)», datos por acción → «($)».
 
     Los porcentajes y múltiplos ya se ven en la propia cifra (12,5 % · 14,6x). Las cantidades de acciones
     van en millones salvo que el nombre diga otra cosa.
     """
+    currency = currency or cur()
     lab = str(label)
     l = lab.lower().strip()
     if kind == "sh" and not any(mk in l for mk in UNIT_MARKERS):

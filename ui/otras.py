@@ -62,7 +62,7 @@ def screener_page():
     # La tabla de resultados ocupa casi todo el ancho de la pantalla.
     st.markdown("<style>.block-container{max-width:98% !important;padding-left:1.5rem;padding-right:1.5rem;}</style>",
                 unsafe_allow_html=True)
-    st.markdown("<span class='subtle'>SCREENER · TODAS LAS COTIZADAS DE EE. UU.</span>", unsafe_allow_html=True)
+    st.markdown("<span class='subtle'>SCREENER · COTIZADAS DE EE. UU. Y EUROPA</span>", unsafe_allow_html=True)
     st.markdown("# Screener")
     t_scr, t_pri = st.tabs(["Screener", "Panel, prioridad y listas"], key="scr_main", on_change="rerun")
     if t_scr.open:
@@ -78,7 +78,8 @@ def _screener_body():
     explica("screener")
     base = screener.load_base(7)
     mk, mk_age = screener.load_market()
-    if base is None or mk is None or (mk_age or 0) > 24:
+    eu_old = not screener.EU_MARKET_FILE.exists() or (time.time() - screener.EU_MARKET_FILE.stat().st_mtime) > 24 * 3600
+    if base is None or mk is None or (mk_age or 0) > 24 or eu_old:
         with st.spinner("Cargando los datos preparados esta noche…"):
             if any(screener.sync_from_repo().values()):
                 base = screener.load_base(7)
@@ -97,10 +98,12 @@ def _screener_body():
         mk_age = 0.0
     base_stamp = screener.BASE_FILE.stat().st_mtime
     mk_stamp = screener.PRICES_FILE.stat().st_mtime if screener.PRICES_FILE.exists() else 0.0
-    df = _screen_table(base_stamp, mk_stamp, screener.NOTAS_FILE.stat().st_mtime if screener.NOTAS_FILE.exists() else 0.0)
-    Y = int(df["Año datos"].iloc[0])
+    eu_stamp = sum(f.stat().st_mtime for f in (screener.EU_BASE_FILE, screener.EU_MARKET_FILE) if f.exists())
+    df = _screen_table(base_stamp + eu_stamp, mk_stamp, screener.NOTAS_FILE.stat().st_mtime if screener.NOTAS_FILE.exists() else 0.0)
+    Y = int(pd.to_numeric(df.loc[pd.to_numeric(df["CIK"], errors="coerce") > 0, "Año datos"], errors="coerce").max())
+    n_eu = int((pd.to_numeric(df["CIK"], errors="coerce").fillna(0) == 0).sum())
     na_age = screener.notas_age_days()
-    c[0].caption(("" if na_age is None else f"Notas del examen financiero: hace {na_age:.0f} días · ") + f"{num(len(df))} empresas · fundamentales del ejercicio {Y} (SEC, hace {(time.time() - base_stamp) / 86400:.1f} días) · "
+    c[0].caption(("" if na_age is None else f"Notas del examen financiero: hace {na_age:.0f} días · ") + f"{num(len(df))} empresas ({num(n_eu)} europeas) · fundamentales del ejercicio {Y} (SEC, hace {(time.time() - base_stamp) / 86400:.1f} días; europeas: ESEF) · "
                  f"precios hace {mk_age or 0:.0f} h · {num(df['Precio'].notna().sum())} con cotización")
 
     # Streamlit borra el estado de los controles al cambiar de página: lo restauramos desde una copia.
@@ -120,7 +123,9 @@ def _screener_body():
         presets = list(screener.PRESETS) + list(_user_presets())
         r[0].selectbox("Plantilla", presets, index=None, placeholder="Cargar una plantilla…", key="scr_preset", on_change=_on_preset)
         text = r[1].text_input("Buscar", placeholder="Ticker o nombre")
-        exch = r[2].multiselect("Mercado", sorted(df["Mercado"].dropna().unique()), default=["Nasdaq", "NYSE"], placeholder="Todos")
+        eu_ex = sorted(df.loc[pd.to_numeric(df["CIK"], errors="coerce").fillna(0) == 0, "Mercado"].dropna().unique())
+        exch = r[2].multiselect("Mercado", sorted(df["Mercado"].dropna().unique()), default=["Nasdaq", "NYSE"] + eu_ex, placeholder="Todos",
+                                help="Por defecto, Nasdaq, NYSE y las bolsas europeas")
         sectors = r[3].multiselect("Sector", sorted(s for s in df["Sector"].dropna().unique() if s != "—"), placeholder="Todos")
         ind_opts = sorted(i for i in df[df["Sector"].isin(sectors)]["Industria"].dropna().unique() if i != "—") if sectors else \
             sorted(i for i in df["Industria"].dropna().unique() if i != "—")

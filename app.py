@@ -61,4 +61,5 @@ if _password_gate():
     pg_car = st.Page(otras.cartera_page, title="Cartera", icon=":material/account_balance_wallet:", url_path="cartera")
     st.session_state["_page_empresa"], st.session_state["_page_lote"] = pg_emp, pg_lot
     nav = st.navigation([pg_emp, pg_scr, pg_car, pg_lot, pg_mis], position="top")
+    st.session_state["_cur"] = "$"  # la ficha lo cambia a la divisa de la empresa abierta
     nav.run()

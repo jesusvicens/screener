@@ -41,9 +41,12 @@ def _age_h(iso: str | None) -> float:
 
 
 # ---------------------------------------------------------------- screener (público)
-def public_file(name: str, timeout: int = 60) -> bytes | None:
+EUROPA_BRANCH = "europa"
+
+
+def public_file(name: str, timeout: int = 60, branch: str = PUBLIC_BRANCH) -> bytes | None:
     try:
-        r = requests.get(f"https://raw.githubusercontent.com/{_public_repo()}/{PUBLIC_BRANCH}/{name}", timeout=timeout)
+        r = requests.get(f"https://raw.githubusercontent.com/{_public_repo()}/{branch}/{name}", timeout=timeout)
         return r.content if r.status_code == 200 else None
     except requests.RequestException:
         return None
@@ -92,6 +95,22 @@ def sync_screener(base_file, market_file, max_base_age_days: float = 7, max_mark
         if raw:
             _write_pickle_from_parquet(raw, market_file, meta.get("market"))
             done["market"] = True
+    return done
+
+
+def sync_europa(base_file, market_file) -> dict:
+    """Cotizadas europeas (rama «europa», la prepara cada noche scripts/datos_europa.py)."""
+    done = {"eu_base": False, "eu_market": False}
+    raw = public_file("meta.json", timeout=15, branch=EUROPA_BRANCH)
+    meta = json.loads(raw) if raw else {}
+    now = time.time()
+    for key, name, dest in (("base", "europa_base.parquet", base_file), ("market", "europa_market.parquet", market_file)):
+        local_age_h = (now - dest.stat().st_mtime) / 3600 if dest.exists() else 1e9
+        if meta.get(key) and _age_h(meta.get(key)) < local_age_h - 0.1:
+            b = public_file(name, branch=EUROPA_BRANCH)
+            if b:
+                _write_pickle_from_parquet(b, dest, meta.get(key))
+                done[f"eu_{key}"] = True
     return done
 
 

@@ -1,0 +1,48 @@
+name: Cotizadas europeas (ESEF)
+
+# Cuentas anuales ESEF de las cotizadas europeas (filings.xbrl.org), su ticker de Yahoo, precios y divisas.
+# Publica en la rama «europa». La primera carga se completa en unas cuantas ejecuciones (cada una tiene un
+# límite de tiempo); después solo procesa los informes nuevos y actualiza precios.
+on:
+  schedule:
+    - cron: "47 */6 * * *"     # cada 6 horas
+  workflow_dispatch:
+    inputs:
+      minutos:
+        description: "Límite de tiempo (minutos)"
+        default: "45"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/europa.yml"
+      - "scripts/datos_europa.py"
+      - "terminal/esef.py"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: europa
+  cancel-in-progress: false
+
+jobs:
+  europa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Preparar datos europeos
+        run: python scripts/datos_europa.py --out out_europa --minutos ${{ inputs.minutos || '45' }}
+      - name: Publicar en la rama «europa» (sin historial)
+        run: |
+          cd out_europa
+          git init -q -b europa
+          git config user.name "datos-bot"
+          git config user.email "datos-bot@users.noreply.github.com"
+          git add .
+          git commit -qm "Cotizadas europeas $(date -u +%F)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" europa

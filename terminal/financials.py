@@ -14,7 +14,7 @@ from datetime import date
 
 import pandas as pd
 
-ANNUAL_FORMS = {"10-K", "10-K/A", "10-KT", "20-F", "20-F/A", "40-F", "40-F/A"}
+ANNUAL_FORMS = {"10-K", "10-K/A", "10-KT", "20-F", "20-F/A", "40-F", "40-F/A", "ESEF"}
 
 # (clave, etiqueta en pantalla, tipo, [etiquetas XBRL us-gaap], [etiquetas IFRS])
 # tipo: "flow" = flujo del ejercicio, "inst" = saldo a cierre, "ps" = por acción, "sh" = acciones
@@ -78,10 +78,10 @@ CONCEPTS: list[tuple[str, str, str, list[str], list[str]]] = [
     ("current_liabilities", "Total pasivo corriente", "inst", ["LiabilitiesCurrent"], ["CurrentLiabilities"]),
     ("st_debt", "Deuda a corto plazo", "inst", ["DebtCurrent", "LongTermDebtCurrent", "ShortTermBorrowings",
                                                "LongTermDebtAndCapitalLeaseObligationsCurrent", "CommercialPaper"],
-     ["CurrentBorrowings", "ShorttermBorrowings"]),
+     ["CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings", "CurrentBorrowings", "ShorttermBorrowings", "CurrentPortionOfNoncurrentBorrowings"]),
     ("lt_debt", "Deuda a largo plazo", "inst", ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations",
                                                "LongTermDebt", "SeniorLongTermNotes", "LongTermNotesPayable",
-                                               "UnsecuredLongTermDebt"], ["NoncurrentBorrowings", "LongtermBorrowings"]),
+                                               "UnsecuredLongTermDebt"], ["NoncurrentPortionOfNoncurrentBorrowings", "NoncurrentBorrowings", "LongtermBorrowings"]),
     ("other_lt_liabilities", "Otros pasivos a largo plazo", "inst", ["OtherLiabilitiesNoncurrent"], ["OtherNoncurrentLiabilities"]),
     ("total_liabilities", "Total pasivo", "inst", ["Liabilities"], ["Liabilities"]),
     ("treasury_stock", "Autocartera (acciones propias)", "inst", ["TreasuryStockValue", "TreasuryStockValueAcquiredCostMethod",
@@ -96,12 +96,15 @@ CONCEPTS: list[tuple[str, str, str, list[str], list[str]]] = [
      ["EquityAttributableToOwnersOfParent", "Equity"]),
     ("liabilities_equity", "Total pasivo y patrimonio", "inst", ["LiabilitiesAndStockholdersEquity"], ["EquityAndLiabilities"]),
     ("shares_outstanding", "Acciones en circulación al cierre (M)", "sh_inst",
-     ["CommonStockSharesOutstanding"], []),
+     ["CommonStockSharesOutstanding"], ["NumberOfSharesOutstanding", "NumberOfSharesIssuedAndFullyPaid", "NumberOfSharesIssued"]),
     # --- Cash Flow
     ("cf_net_income", "Beneficio neto (flujo)", "flow", ["ProfitLoss", "NetIncomeLoss"], ["ProfitLoss"]),
     ("da", "Amortizaciones", "flow", ["DepreciationDepletionAndAmortization", "DepreciationAmortizationAndAccretionNet",
                                       "DepreciationAndAmortization", "Depreciation"],
-     ["DepreciationAndAmortisationExpense", "DepreciationAmortisationAndImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss"]),
+     ["DepreciationAndAmortisationExpense", "AdjustmentsForDepreciationAndAmortisationExpense",
+      "DepreciationAmortisationAndImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss",
+      "AdjustmentsForDepreciationAmortisationAndImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss",
+      "DepreciationExpense"]),
     ("sbc", "Remuneración en acciones", "flow", ["ShareBasedCompensation", "AllocatedShareBasedCompensationExpense"],
      ["AdjustmentsForSharebasedPayments"]),
     ("_inc_receivables", "", "flow", ["IncreaseDecreaseInAccountsReceivable", "IncreaseDecreaseInReceivables",
@@ -114,16 +117,22 @@ CONCEPTS: list[tuple[str, str, str, list[str], list[str]]] = [
      ["CashFlowsFromUsedInOperatingActivities"]),
     ("_capex_pos", "", "flow", ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets",
                                "PaymentsForCapitalImprovements", "PaymentsToAcquireOtherPropertyPlantAndEquipment"],
-     ["PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities"]),
-    ("_acq_pos", "", "flow", ["PaymentsToAcquireBusinessesNetOfCashAcquired", "PaymentsToAcquireBusinessesGross"], []),
+     ["PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets",
+      "PurchaseOfPropertyPlantAndEquipmentAndIntangibleAssetsOtherThanGoodwill",
+      "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities", "PurchaseOfPropertyPlantAndEquipment"]),
+    ("_lease_pay", "", "flow", [], ["PaymentsOfLeaseLiabilitiesClassifiedAsFinancingActivities", "PaymentsOfLeaseLiabilities"]),
+    ("_acq_pos", "", "flow", ["PaymentsToAcquireBusinessesNetOfCashAcquired", "PaymentsToAcquireBusinessesGross"],
+     ["CashFlowsUsedInObtainingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities"]),
     ("icf", "Flujo de caja de inversión", "flow", ["NetCashProvidedByUsedInInvestingActivities",
                                                   "NetCashProvidedByUsedInInvestingActivitiesContinuingOperations"],
      ["CashFlowsFromUsedInInvestingActivities"]),
     ("_debt_issued", "", "flow", ["ProceedsFromIssuanceOfLongTermDebt", "ProceedsFromIssuanceOfDebt",
                                  "ProceedsFromDebtNetOfIssuanceCosts", "ProceedsFromIssuanceOfSeniorLongTermDebt",
-                                 "ProceedsFromIssuanceOfUnsecuredDebt"], []),
+                                 "ProceedsFromIssuanceOfUnsecuredDebt"],
+     ["ProceedsFromBorrowingsClassifiedAsFinancingActivities", "ProceedsFromNoncurrentBorrowings"]),
     ("_debt_repaid", "", "flow", ["RepaymentsOfLongTermDebt", "RepaymentsOfDebt", "RepaymentsOfSeniorDebt",
-                                 "RepaymentsOfUnsecuredDebt"], []),
+                                 "RepaymentsOfUnsecuredDebt"],
+     ["RepaymentsOfBorrowingsClassifiedAsFinancingActivities", "RepaymentsOfNoncurrentBorrowings"]),
     ("_st_debt_net", "", "flow", ["ProceedsFromRepaymentsOfShortTermDebt", "ProceedsFromRepaymentsOfCommercialPaper"], []),
     ("_buyback_pos", "", "flow", ["PaymentsForRepurchaseOfCommonStock", "PaymentsForRepurchaseOfEquity"],
      ["PaymentsToAcquireOrRedeemEntitysShares"]),
@@ -158,7 +167,7 @@ LABELS.update({
     "acquisitions": "Adquisiciones netas", "debt_net": "Emisión (+) / devolución (−) de deuda",
     "equity_net": "Emisión (+) / recompra (−) de acciones", "dividends": "Dividendos pagados",
     "fcf": "Flujo de caja libre (OCF + capex)", "debt_issued": "Deuda emitida", "debt_repaid": "Deuda devuelta",
-    "buybacks": "Recompras brutas",
+    "buybacks": "Recompras brutas", "lease_payments": "Pago de arrendamientos (NIIF 16)",
 })
 
 
@@ -350,6 +359,10 @@ def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
         sb, sd = g("shares_basic", y), g("shares_diluted", y)
         if sd is None:
             sd = sb
+        if sd is None and ni and g("eps_diluted", y):
+            sd = ni / g("eps_diluted", y)  # muchas europeas no publican el nº medio de acciones en XBRL
+        if sb is None and ni and g("eps_basic", y):
+            sb = ni / g("eps_basic", y)
         put("shares_basic", y, None if sb is None else sb / M)
         put("shares_diluted", y, None if sd is None else sd / M)
         epsd = g("eps_diluted", y)
@@ -407,6 +420,8 @@ def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
         divs = -g("_dividends_pos", y) if g("_dividends_pos", y) is not None else None
         ocf = g("ocf", y)
         fcf = ocf + (capex or 0) if ocf is not None else None
+        if fcf is not None and g("_lease_pay", y) and not has_usgaap:
+            fcf -= abs(g("_lease_pay", y))  # NIIF 16: el pago de alquileres sale del flujo operativo; se resta para comparar
         for k, v in [("cf_net_income", cfni), ("sbc", g("sbc", y)),
                      ("chg_receivables", None if g("_inc_receivables", y) is None else -g("_inc_receivables", y)),
                      ("chg_inventory", None if g("_inc_inventory", y) is None else -g("_inc_inventory", y)),
@@ -414,10 +429,12 @@ def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
                      ("icf", g("icf", y)), ("debt_net", debt_net), ("equity_net", eq_net), ("dividends", divs),
                      ("fcf_fin", g("fcf_fin", y)), ("net_cash_flow", g("net_cash_flow", y)), ("fcf", fcf),
                      ("debt_issued", g("_debt_issued", y)), ("debt_repaid", g("_debt_repaid", y)),
-                     ("buybacks", g("_buyback_pos", y))]:
+                     ("buybacks", g("_buyback_pos", y)), ("lease_payments", g("_lease_pay", y))]:
             put(k, y, None if v is None else v / M)
 
     warnings = _adjust_splits(out, years)
+    if not has_usgaap and any(raw.get("_lease_pay", {}).get(y) for y in years):
+        warnings.append("NIIF 16: el flujo de caja libre ya resta el pago de arrendamientos, para que sea comparable con US GAAP.")
     for k in ("revenue", "net_income", "operating_income", "equity", "ocf", "eps_diluted", "shares_diluted"):
         miss = [y for y in years if out.get(k, {}).get(y) is None]
         if miss:

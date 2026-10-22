@@ -9,14 +9,21 @@ import streamlit as st
 
 from terminal import analysis as A, exam as E, financials as F, pipeline, plantilla, riesgo as R, sec, storage
 from ui.ayuda import explica
-from ui.common import (AMBER, BLUE, GREEN, MUTED, RED, fig_layout, fmt_cell, kv_table, money, mult, num, pct, show_cols_table,
+from ui.common import (AMBER, BLUE, GREEN, MUTED, RED, cur, fig_layout, set_currency, fmt_cell, kv_table, money, mult, num, pct, show_cols_table,
                        show_rows_table)
 
 
 @st.cache_data(ttl=24 * 3600, show_spinner=False)
 def _universe_options():
     uni = sec.universe()
-    return [f"{u['ticker']} · {u['name']}" for u in uni]
+    opts = [f"{u['ticker']} · {u['name']}" for u in uni]
+    try:  # cotizadas europeas (cuentas ESEF)
+        from terminal import esef
+        opts += [f"{u['ticker']} · {u['name']} · {esef.COUNTRY_NAMES.get(u.get('country', ''), u.get('country', ''))}"
+                 for u in esef.universe()]
+    except Exception:  # noqa: BLE001
+        pass
+    return opts
 
 
 @st.cache_data(ttl=6 * 3600, show_spinner=False)
@@ -173,15 +180,18 @@ def page():
     T = sel.split(" · ")[0]
     st.session_state["ticker"] = T
 
-    with st.spinner(f"Descargando {T} de la SEC…"):
+    from terminal.esef import is_european
+    eu = is_european(T)
+    with st.spinner(f"Descargando {T} " + ("(informes ESEF, la primera vez tarda un poco)…" if eu else "de la SEC…")):
         try:
             meta, fin, hist = _load(T, n_years)
         except Exception as e:  # noqa: BLE001
             st.error(f"No he podido cargar {T}: {e}")
             return
     if not fin.years:
-        st.error("La SEC no tiene estados anuales en XBRL para esta empresa (p. ej. emisores extranjeros con IFRS sin etiquetar, SPACs, fondos).")
+        st.error("No hay estados anuales en XBRL para esta empresa (p. ej. emisores sin etiquetar, SPACs, fondos).")
         return
+    set_currency(fin.currency)
 
     saved = _saved(T)
     stats0 = A.history_stats(fin)
@@ -223,7 +233,7 @@ def page():
             (":material/dashboard: Resumen", lambda: _tab_resumen(ca)),
             (":material/show_chart: Histórico", lambda: _tab_historico(T, ca)),
             (":material/table_chart: Estados financieros", lambda: _tab_estados(ca)),
-            (":material/pie_chart: Segmentos", _mod("segmentos", T, ca)),
+            (":material/pie_chart: Segmentos", (lambda: _eu_info("segmentos")) if eu else _mod("segmentos", T, ca)),
             (":material/flag: Guías y resultados", _guias),
         ],
         ":material/search: Análisis": [
@@ -239,8 +249,9 @@ def page():
             (":material/warning: Riesgo", lambda: _tab_riesgo(T, ca)),
         ],
         ":material/folder_open: Propiedad y fuentes": [
-            (":material/badge: Directivos y fondos", _mod("propiedad", T, ca)),
-            (":material/description: SEC", lambda: _tab_filings(ca)),
+            (":material/badge: Directivos y fondos", (lambda: _eu_info("propiedad")) if eu else _mod("propiedad", T, ca)),
+            ((":material/description: Informes", lambda: _tab_informes_eu(ca)) if eu
+             else (":material/description: SEC", lambda: _tab_filings(ca))),
             (":material/edit_note: Notas", lambda: _tab_notas(T, ca)),
         ],
     }
@@ -300,6 +311,45 @@ _GRUPOS_CSS = "<style>" + "".join(
 )
 
 
+def _pais(meta: dict) -> str:
+    from terminal.esef import COUNTRY_NAMES
+    return COUNTRY_NAMES.get(meta.get("country", ""), meta.get("country", "") or "Europa")
+
+
+def _eu_info(que: str):
+    textos = {
+        "segmentos": "En Europa, el desglose por segmentos va en las notas del informe anual y el formato ESEF no lo etiqueta "
+                     "cifra a cifra, así que no puedo leerlo automáticamente. Lo tienes en el informe anual (pestaña «Informes») "
+                     "y lo podemos recoger en «Guías y resultados» desde las presentaciones de resultados.",
+        "propiedad": "Las compras y ventas de directivos (formulario 4) y las carteras de los grandes fondos (13F) son registros de "
+                     "la SEC: solo existen para empresas que cotizan en EE. UU. En Europa, las operaciones de directivos se publican "
+                     "en cada regulador (AMF, CNMV, BaFin…) y no hay una fuente única gratuita.",
+    }
+    st.info(textos[que])
+
+
+def _tab_informes_eu(ca):
+    """Informes anuales ESEF de una empresa europea (en lugar de la pestaña SEC)."""
+    from terminal import esef
+    st.markdown("## Informes anuales (ESEF)")
+    st.caption("Informes anuales publicados en formato ESEF, del repositorio público filings.xbrl.org. «Visor» abre el "
+               "informe con las cifras etiquetadas; «Informe» abre el documento completo.")
+    try:
+        fl = esef.entity_filings(ca.meta["lei"])
+    except Exception as e:  # noqa: BLE001
+        st.error(f"No he podido leer la lista de informes: {e}")
+        return
+    rows = [{"Ejercicio": (f["period_end"] or "")[:4], "Publicado": (f["published"] or f["added"])[:10], "País": f["country"],
+             "Visor": esef.BASE + f["viewer_url"] if f.get("viewer_url") else None,
+             "Informe": esef.BASE + f["report_url"] if f.get("report_url") else None} for f in fl]
+    df = pd.DataFrame(rows).sort_values("Publicado", ascending=False)
+    st.dataframe(df, width="stretch", hide_index=True,
+                 column_config={"Visor": st.column_config.LinkColumn("Visor", display_text="Abrir visor"),
+                                "Informe": st.column_config.LinkColumn("Informe", display_text="Abrir informe")})
+    st.caption(f"LEI {ca.meta.get('lei')} · ISIN {ca.meta.get('isin') or '—'}. El ejercicio que muestra el repositorio a veces va "
+               "desfasado un año; las cifras de la terminal usan las fechas reales de cada dato.")
+
+
 def _header(ca: pipeline.CompanyAnalysis):
     f = ca.fin
     L = f.years[-1]
@@ -308,7 +358,9 @@ def _header(ca: pipeline.CompanyAnalysis):
     shares = f.get("shares_outstanding", L) or f.get("shares_diluted", L)
     mcap = P * shares if (P and shares) else None
     st.markdown(f"<h1><span class='tick'>{f.ticker}</span>{f.name}</h1>"
-                f"<span class='pill'>{ca.meta.get('exchange')}</span><span class='pill'>CIK {f.cik}</span>"
+                f"<span class='pill'>{ca.meta.get('exchange')}</span>"
+                + (f"<span class='pill'>{_pais(ca.meta)}</span><span class='pill'>Cuentas NIIF · {f.currency}</span>"
+                   if ca.meta.get("region") == "EU" else f"<span class='pill'>CIK {f.cik}</span>") +
                 f"<span class='pill'>Último ejercicio {L} · cierre {f.period_end.get(L, '')}</span>"
                 f"<span class='pill am'>Fase: {ca.phase}</span>", unsafe_allow_html=True)
     v = ca.val
@@ -320,7 +372,7 @@ def _header(ca: pipeline.CompanyAnalysis):
     pe_hist = [round(x, 1) for x in ca.eps_df["PER"] if x is not None and x == x and 0 < x < 200] if "PER" in ca.eps_df else []
     pe_now = (P / eps) if (P and eps and eps > 0) else None
     cols = st.columns(8)
-    cols[0].metric("Precio", f"{num(P, 2)} $" if P else "—", (("+" if ch1 >= 0 else "") + pct(ch1) + " 1 año") if ch1 is not None else None,
+    cols[0].metric("Precio", f"{num(P, 2)} {cur()}" if P else "—", (("+" if ch1 >= 0 else "") + pct(ch1) + " 1 año") if ch1 is not None else None,
                    chart_data=spark_px, chart_type="area",
                    help=f"Última cotización ({ca.params.price_date or 'manual'}). Debajo, la variación y el gráfico del último año.")
     med = sorted(pe_hist)[len(pe_hist) // 2] if pe_hist else None
@@ -340,7 +392,7 @@ def _header(ca: pipeline.CompanyAnalysis):
     if v and v.value:
         mos = v.value["Margen de seguridad al precio actual"]
         rent = v.value["Rentabilidad anual implícita en la media"]
-        cols[5].metric("Valor estimado", f'{num(v.value["Valor estimado hoy = E[VF] / (1+r)^n"], 2)} $',
+        cols[5].metric("Valor estimado", f'{num(v.value["Valor estimado hoy = E[VF] / (1+r)^n"], 2)} {cur()}',
                        help="Valor por acción hoy según tus escenarios (pestaña «Escenarios y valoración»).")
         cols[6].metric("Margen seg.", pct(mos), "a favor" if (mos or 0) > 0 else "en contra",
                        delta_color="normal" if (mos or 0) > 0 else "inverse", delta_arrow="off",
@@ -396,18 +448,18 @@ def _tab_resumen(ca):
     eps_df = ca.eps_df
     c1, c2 = st.columns(2)
     fig = go.Figure()
-    fig.add_bar(x=ys, y=f.series("revenue"), name="Ventas", marker_color=BLUE, hovertemplate="%{y:,.0f} M$")
-    fig.add_bar(x=ys, y=f.series("net_income"), name="Beneficio neto", marker_color=AMBER, hovertemplate="%{y:,.0f} M$")
-    fig.add_bar(x=ys, y=f.series("fcf"), name="Flujo de caja libre", marker_color=GREEN, hovertemplate="%{y:,.0f} M$")
+    fig.add_bar(x=ys, y=f.series("revenue"), name="Ventas", marker_color=BLUE, hovertemplate="%{y:,.0f} M" + cur())
+    fig.add_bar(x=ys, y=f.series("net_income"), name="Beneficio neto", marker_color=AMBER, hovertemplate="%{y:,.0f} M" + cur())
+    fig.add_bar(x=ys, y=f.series("fcf"), name="Flujo de caja libre", marker_color=GREEN, hovertemplate="%{y:,.0f} M" + cur())
     fig.update_yaxes(tickformat=",.0f")
-    c1.plotly_chart(fig_layout(fig, "Ventas, beneficio y caja libre", unit="millones de $"), width="stretch")
+    c1.plotly_chart(fig_layout(fig, "Ventas, beneficio y caja libre", unit=f"millones de {cur()}"), width="stretch")
     eps = f.series("eps_diluted")
     fig = go.Figure()
     fig.add_bar(x=ys, y=eps, name="BPA diluido", marker_color=[BLUE if (e or 0) >= 0 else RED for e in eps],
-                hovertemplate="%{y:,.2f} $<extra>BPA</extra>", text=[num(e, 2) for e in eps], textposition="outside", cliponaxis=False,
+                hovertemplate="%{y:,.2f} " + cur() + "<extra>BPA</extra>", text=[num(e, 2) for e in eps], textposition="outside", cliponaxis=False,
                 textfont=dict(size=10, color=MUTED))
     fig.update_layout(showlegend=False)
-    c2.plotly_chart(fig_layout(fig, "Beneficio por acción (BPA diluido)", unit="$ por acción"), width="stretch")
+    c2.plotly_chart(fig_layout(fig, "Beneficio por acción (BPA diluido)", unit=f"{cur()} por acción"), width="stretch")
 
     c3, c4 = st.columns(2)
     per = [p if (p is not None and p == p and 0 < p < 200) else None for p in eps_df["PER"]] if "PER" in eps_df else []
@@ -685,8 +737,8 @@ def _tab_escenarios(T, ca):
             p_ui = prop * 100 if kind == "pct" else prop
             props[(scn, fld)] = p_ui
             k, kp = _key(T, "sc", scn, fld), _key(T, "scp", scn, fld)
-            cur, lp = st.session_state.get(k), st.session_state.get(kp)
-            if cur is None or (lp is not None and abs(cur - lp) <= 1e-6):
+            vcur, lp = st.session_state.get(k), st.session_state.get(kp)
+            if vcur is None or (lp is not None and abs(vcur - lp) <= 1e-6):
                 st.session_state[k] = p_ui
                 st.session_state[kp] = p_ui
             elif lp is None:
@@ -701,9 +753,9 @@ def _tab_escenarios(T, ca):
         row[0].markdown(f"<div style='padding-top:.45rem'>{lbl}</div>", unsafe_allow_html=True)
         for i, scn in enumerate(A.SCENARIOS):
             row[i + 1].number_input(lbl, step=0.5, format="%.2f", key=_key(T, "sc", scn, fld), label_visibility="collapsed")
-            cur = st.session_state.get(_key(T, "sc", scn, fld))
-            if cur is not None and abs(cur - props[(scn, fld)]) > 1e-6:
-                mine.append(f"{scn} · {lbl}: **{cur:.2f}** (propuesta {props[(scn, fld)]:.2f})")
+            vcur = st.session_state.get(_key(T, "sc", scn, fld))
+            if vcur is not None and abs(vcur - props[(scn, fld)]) > 1e-6:
+                mine.append(f"{scn} · {lbl}: **{vcur:.2f}** (propuesta {props[(scn, fld)]:.2f})")
     if mine:
         st.markdown("<span class='pill am'>Tus supuestos</span> " + " · ".join(mine), unsafe_allow_html=True)
     with st.expander("¿De dónde sale el PER de salida?"):
@@ -754,7 +806,7 @@ def _tab_escenarios(T, ca):
                 text=[f"{x:,.0f}<br>p={p:.0%}" for x, p in zip(vf.values, v.by_scenario.loc["Probabilidad"])], textposition="outside")
     fig.add_hline(y=U, line_dash="dash", line_color=AMBER, annotation_text=f"Umbral {U:,.0f}", annotation_font_color=AMBER)
     fig.add_hline(y=v.coverage["Valor futuro esperado E[VF]"], line_dash="dot", line_color=BLUE, annotation_text="E[VF]", annotation_font_color=BLUE)
-    st.plotly_chart(fig_layout(fig, f"Valor futuro en el año {ca.params.n} frente al umbral", 340, unit="$ por acción"), width="stretch")
+    st.plotly_chart(fig_layout(fig, f"Valor futuro en el año {ca.params.n} frente al umbral", 340, unit=f"{cur()} por acción"), width="stretch")
 
     st.markdown("## 7. Ventana de horizontes (escenario base)")
     explica("esc_7")
@@ -826,7 +878,7 @@ def _tab_riesgo(T, ca):
         fig.add_bar(x=[scn], y=[g], marker_color=GREEN if g >= 0 else RED, name=scn, showlegend=False,
                     text=[f"{g:,.0f}"], textposition="outside")
     fig.add_hline(y=0, line_color=MUTED)
-    st.plotly_chart(fig_layout(fig, "Exceso o déficit ponderado por probabilidad (oportunidad vs riesgo)", 280, unit="$ por acción"), width="stretch")
+    st.plotly_chart(fig_layout(fig, "Exceso o déficit ponderado por probabilidad (oportunidad vs riesgo)", 280, unit=f"{cur()} por acción"), width="stretch")
 
     st.markdown("## 3. Test de cobertura")
     c1, c2 = st.columns([3, 2])

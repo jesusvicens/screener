@@ -50,6 +50,8 @@ def _histories(tickers: tuple[str, ...]) -> pd.DataFrame:
 
 @st.cache_data(ttl=12 * 3600, show_spinner=False)
 def _next(cik: int) -> dict:
+    if not cik:
+        return {}  # europeas: sin calendario de la SEC
     try:
         return calendario.next_results(cik)
     except Exception:  # noqa: BLE001

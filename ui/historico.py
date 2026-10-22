@@ -17,7 +17,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
-from ui.common import BLUE, GREEN, MUTED, RED, TEXT, fmt_cell, show_cols_table
+from ui.common import BLUE, cur, GREEN, MUTED, RED, TEXT, fmt_cell, show_cols_table
 
 AMBER_LINE = "#e07b39"
 
@@ -173,7 +173,14 @@ def _layout(fig, h):
     return fig
 
 
-UNIT = {"m": "millones de $", "sh": "millones de acciones", "ps": "$ por acción", "pct": "%", "x": "veces"}
+class _Unit(dict):
+    """Unidades del eje según el tipo de dato, en la divisa de la empresa."""
+    def get(self, k, default=None):
+        c = cur()
+        return {"m": f"millones de {c}", "sh": "millones de acciones", "ps": f"{c} por acción", "pct": "%", "x": "veces"}.get(k, default)
+
+
+UNIT = _Unit()
 
 
 def _ylab(label, kind):
@@ -224,7 +231,7 @@ def _chart_margin(ca, ys, key, label):
                     text=[fmt_cell(m, "pct") for m in mg], textposition="top center", textfont=dict(size=10),
                     hovertemplate="%{x}: %{y:.1%}<extra>" + label + "</extra>", row=2, col=1)
     fig.update_layout(barmode="group", showlegend=True)
-    fig.update_yaxes(tickformat=",.0f", title_text="Millones de $", title_font=dict(size=11), row=1, col=1)
+    fig.update_yaxes(tickformat=",.0f", title_text=f"Millones de {cur()}", title_font=dict(size=11), row=1, col=1)
     fig.update_yaxes(tickformat=".0%", title_text=label, title_font=dict(size=11), row=2, col=1)
     fig.update_xaxes(type="category")
     _layout(fig, 540)
@@ -276,7 +283,7 @@ def _chart_ratio(ca, ratio: pd.Series, label):
     if not v.empty:
         fig.add_hline(y=float(v.median()), line_dash="dot", line_color=MUTED, row=2, col=1,
                       annotation_text=f"mediana {v.median():.1f}", annotation_position="top left")
-    fig.update_yaxes(title_text="Precio ($)", title_font=dict(size=11), row=1, col=1)
+    fig.update_yaxes(title_text=f"Precio ({cur()})", title_font=dict(size=11), row=1, col=1)
     fig.update_yaxes(title_text=f"{label} (veces)", title_font=dict(size=11), row=2, col=1)
     fig.update_xaxes(rangeselector=_range_buttons(), row=1, col=1)
     return _layout(fig, 560)
@@ -306,7 +313,7 @@ def _annual_table(ca, vals, kind, label, with_growth=True):
 
 
 def _summary(vals, kind, label):
-    suf = {"m": " M$", "ps": " $", "sh": " M acciones"}.get(kind, "")
+    suf = {"m": f" M{cur()}", "ps": f" {cur()}", "sh": " M acciones"}.get(kind, "")
     fc = lambda x, k: fmt_cell(x, k) + (suf if (k == kind and x is not None) else "")  # noqa: E731
     v = [x for x in vals]
     last = next((x for x in reversed(v) if x is not None), None)
@@ -373,6 +380,10 @@ def _chart_quarterly(labels, vals, kind, label, growth_label):
 
 
 def _quarter_view(ca, key, kind, label, freq):
+    if not int(ca.fin.cik or 0):
+        st.info("Empresa europea: en formato ESEF solo se publica el informe anual. Las cifras semestrales o trimestrales "
+                "están en sus notas de prensa y las podemos recoger en «Guías y resultados».")
+        return
     try:
         q, t = _quarterly(int(ca.fin.cik))
     except Exception as e:  # noqa: BLE001
@@ -405,7 +416,7 @@ def _chart_returns(ca, ys):
     fig.add_scatter(x=ys, y=fcf, name="Flujo de caja libre", mode="lines+markers", line=dict(color=TEXT, width=2, dash="dot"),
                     marker=dict(size=8), hovertemplate="%{x}: %{y:,.0f} M<extra>FCF</extra>")
     fig.update_layout(barmode="stack")
-    fig.update_yaxes(tickformat=",.0f", title_text="Millones de $", title_font=dict(size=11))
+    fig.update_yaxes(tickformat=",.0f", title_text=f"Millones de {cur()}", title_font=dict(size=11))
     fig.update_xaxes(type="category")
     _layout(fig, 460)
     fig.update_layout(showlegend=True, legend=dict(orientation="h", y=1.08, x=0), hovermode="x unified")
@@ -426,8 +437,8 @@ def tab(T: str, ca, key_fn):
     label, key, kind, chart = next(m for m in mets if m[0] == sel)
     ys = [str(y) for y in f.years]
     name = f.name.title() if f.name.isupper() else f.name
-    unit = {"price": "$ por acción", "mcap": "millones de $", "ratio_price": "veces", "margin": "% de las ventas",
-            "all_margins": "% de las ventas", "returns": "millones de $"}.get(chart) or UNIT.get(kind, "")
+    unit = {"price": f"{cur()} por acción", "mcap": f"millones de {cur()}", "ratio_price": "veces", "margin": "% de las ventas",
+            "all_margins": "% de las ventas", "returns": f"millones de {cur()}"}.get(chart) or UNIT.get(kind, "")
     st.markdown(f"<div class='mt-title'>{name} · {label} {f.years[0]}-{f.years[-1]} | {f.ticker}"
                 f"<span style='font-size:.85rem;font-weight:500;color:#6b7280'> · en {unit}</span></div>", unsafe_allow_html=True)
 
@@ -439,7 +450,7 @@ def tab(T: str, ca, key_fn):
         if chart == "price":
             st.markdown(f"<div class='mt-sub'>Cotización diaria ajustada por splits (sin dividendos). Último cierre: "
                         f"{h.iloc[-1]:,.2f} el {h.index[-1]:%d-%m-%Y}.</div>", unsafe_allow_html=True)
-            st.plotly_chart(_chart_price(ca, h, "Precio ($)", ",.2f"), width="stretch")
+            st.plotly_chart(_chart_price(ca, h, f"Precio ({cur()})", ",.2f"), width="stretch")
             st.markdown("#### Precio por año")
             _price_table(h)
         else:
@@ -448,13 +459,14 @@ def tab(T: str, ca, key_fn):
             mcap = ratio_inv.dropna()
             st.markdown("<div class='mt-sub'>Capitalización diaria = cotización × acciones diluidas del último ejercicio cerrado (millones).</div>",
                         unsafe_allow_html=True)
-            st.plotly_chart(_chart_price(ca, mcap, "Capitalización (M$)", ",.0f"), width="stretch")
+            st.plotly_chart(_chart_price(ca, mcap, f"Capitalización (M{cur()})", ",.0f"), width="stretch")
             if not mcap.empty:
                 yr = mcap.groupby(mcap.index.year).last()
-                df = pd.DataFrame({"Año": yr.index.astype(str), "Capitalización al cierre (M$)": yr.values})
-                df["Variación anual"] = df["Capitalización al cierre (M$)"].pct_change()
+                cap = f"Capitalización al cierre (M{cur()})"
+                df = pd.DataFrame({"Año": yr.index.astype(str), cap: yr.values})
+                df["Variación anual"] = df[cap].pct_change()
                 show_cols_table(df.iloc[::-1].set_index("Año"), height=38 + 35 * len(df),
-                                kinds={"Capitalización al cierre (M$)": "m", "Variación anual": "pct"})
+                                kinds={cap: "m", "Variación anual": "pct"})
         return
 
     if chart == "ratio_price":

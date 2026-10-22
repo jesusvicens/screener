@@ -243,7 +243,95 @@ def build_base(progress=None, years_back: int = 10) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def row_from_financials(fin, meta: dict, n: int = 11) -> dict | None:
+    """Fila del screener a partir de unos estados ya construidos (lo usan las empresas europeas, ESEF).
+
+    Mismas columnas que build_base; los importes en la divisa del informe (se pasan a $ al valorar).
+    """
+    if not fin.years:
+        return None
+    Y = fin.years[-1]
+    yrs = list(range(Y - n + 1, Y + 1))
+    M = 1e6
+
+    def ser(k, mult=M):
+        return [None if fin.get(k, y) is None else fin.get(k, y) * mult for y in yrs]
+
+    rev, ni, eps, sh, eq = ser("revenue"), ser("net_income"), ser("eps_diluted", 1), ser("shares_diluted"), ser("equity")
+    ocf, capex, op = ser("ocf"), ser("capex"), ser("operating_income")
+    fcf = ser("fcf")
+    if rev[-1] is None and ni[-1] is None:
+        return None
+    g = lambda k: None if fin.get(k, Y) is None else fin.get(k, Y) * M  # noqa: E731
+    R, NI, OP, EQ = rev[-1], ni[-1], op[-1], eq[-1]
+    debt = (g("lt_debt") or 0) + (g("st_debt") or 0)
+    cash = g("cash_sti") or 0
+    da = g("da")
+    ebitda = (OP + (da or 0)) if OP is not None else None
+    pretax, tax = g("pretax"), g("taxes")
+    tax_rate = min(max(_d(tax, pretax) or 0.21, 0), 0.35) if pretax and pretax > 0 else 0.21
+    ic = (debt + EQ - cash) if EQ is not None else None
+    roes = [_d(a, e) for a, e in zip(ni[-5:], eq[-5:]) if e and e > 0 and a is not None]
+    divs = -(g("dividends") or 0) or None
+    bb = g("buybacks")
+    capex_pos = -capex[-1] if capex[-1] is not None else None
+
+    def downs(s):
+        s = [x for x in s if x is not None]
+        return sum(1 for a, b in zip(s, s[1:]) if b < a) if len(s) >= 3 else None
+
+    gp = g("gross_profit")
+    return {
+        "Ticker": meta["ticker"], "Empresa": meta["name"], "Mercado": meta.get("exchange") or "Europa", "CIK": 0, "Año datos": Y,
+        "Divisa": fin.currency, "LEI": meta.get("lei"),
+        "_s_rev": rev, "_s_eps": eps, "_s_ni": ni, "_s_fcf": fcf,
+        "BPA": eps[-1], "Acciones (M)": sh[-1] / M if sh[-1] else None,
+        "_debt": debt, "_cash": cash, "_eq": EQ, "_fcf": fcf[-1], "_op": OP, "_ebitda": ebitda, "_div": divs, "_rev": R, "_ni": NI,
+        "Ventas (M$)": R / M if R else None, "Beneficio (M$)": NI / M if NI is not None else None,
+        "Crec. ventas 1a": (_d(R, rev[-2]) - 1) if (R and rev[-2]) else None,
+        "CAGR ventas 3a": _cagr(R, rev[-4], 3), "CAGR ventas 5a": _cagr(R, rev[-6], 5),
+        "Crec. BPA 1a": (_d(eps[-1], eps[-2]) - 1) if (eps[-1] is not None and eps[-2] and eps[-2] > 0) else None,
+        "CAGR BPA 3a": _cagr(eps[-1], eps[-4], 3), "CAGR BPA 5a": _cagr(eps[-1], eps[-6], 5),
+        "CAGR beneficio 5a": _cagr(NI, ni[-6], 5), "CAGR flujo operativo 5a": _cagr(ocf[-1], ocf[-6], 5),
+        "CAGR FCF 5a": _cagr(fcf[-1], fcf[-6], 5), "CAGR patrimonio 5a": _cagr(EQ, eq[-6], 5),
+        "Años caída ventas": downs(rev[-6:]), "Años caída BPA": downs(eps[-6:]),
+        "Años con pérdidas": sum(1 for x in ni[-6:] if x is not None and x < 0) if any(x is not None for x in ni[-6:]) else None,
+        "Margen bruto": _d(gp, R), "Margen operativo": _d(OP, R), "Margen neto": _d(NI, R), "Margen FCF": _d(fcf[-1], R),
+        "I+D / ventas": _d(g("rnd"), R), "SBC / ventas": _d(g("sbc"), R),
+        "ROE": _d(NI, EQ) if EQ and EQ > 0 else None, "ROE medio 5a": sum(roes) / len(roes) if len(roes) >= 3 else None,
+        "ROA": _d(NI, g("total_assets")), "ROIC": _d(OP * (1 - tax_rate), ic) if (OP is not None and ic and ic > 0) else None,
+        "Deuda / patrimonio": _d(debt, EQ) if EQ and EQ > 0 else None,
+        "Deuda neta / EBITDA": _d(debt - cash, ebitda) if ebitda and ebitda > 0 else None,
+        "Liquidez corriente": _d(g("current_assets"), g("current_liabilities")),
+        "Años para repagar deuda con OCF": _d(debt, ocf[-1]) if ocf[-1] and ocf[-1] > 0 else None,
+        "Var. acciones 5a": _cagr(sh[-1], sh[-6], 5),
+        "Payout": _d(divs or 0, NI) if NI and NI > 0 else None,
+        "Recompras / FCF": _d(bb or 0, fcf[-1]) if fcf[-1] and fcf[-1] > 0 else None,
+        "FCF / beneficio": _d(fcf[-1], NI) if NI and NI > 0 else None,
+        "Capex / OCF": _d(capex_pos or 0, ocf[-1]) if ocf[-1] and ocf[-1] > 0 else None,
+    }
+
+
+EU_BASE_FILE = CACHE / "europa_base.pkl"
+EU_MARKET_FILE = CACHE / "europa_market.pkl"
+
+
+def _load_eu(path) -> pd.DataFrame | None:
+    try:
+        return pd.read_pickle(path) if path.exists() else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def load_base(max_age_days: float = 7) -> pd.DataFrame | None:
+    us = _load_us_base(max_age_days)
+    eu = _load_eu(EU_BASE_FILE)
+    if us is None or eu is None or eu.empty:
+        return us
+    return pd.concat([us, eu], ignore_index=True)
+
+
+def _load_us_base(max_age_days: float = 7) -> pd.DataFrame | None:
     if BASE_FILE.exists() and (time.time() - BASE_FILE.stat().st_mtime) < max_age_days * 86400:
         df = pd.read_pickle(BASE_FILE)
         if "_s_eps" in df.columns:  # versiones antiguas sin series anuales: se reconstruye
@@ -294,12 +382,19 @@ def sync_from_repo() -> dict:
     """Trae los datos que GitHub Actions prepara cada noche (rama «datos»), si son más nuevos que los locales."""
     try:
         from . import remoto
-        return remoto.sync_screener(BASE_FILE, PRICES_FILE)
+        done = remoto.sync_screener(BASE_FILE, PRICES_FILE)
+        try:
+            done.update(remoto.sync_europa(EU_BASE_FILE, EU_MARKET_FILE))
+        except Exception:  # noqa: BLE001
+            pass
+        return done
     except Exception:  # noqa: BLE001
         return {"base": False, "market": False}
 
 
 def save_base(df: pd.DataFrame):
+    if "CIK" in df:
+        df = df[pd.to_numeric(df["CIK"], errors="coerce").fillna(0) > 0]  # las europeas tienen su propio fichero
     df.to_pickle(BASE_FILE)
 
 
@@ -342,7 +437,11 @@ def refresh_market(progress=None) -> pd.DataFrame:
 
 def load_market() -> tuple[pd.DataFrame | None, float | None]:
     if PRICES_FILE.exists():
-        return pd.read_pickle(PRICES_FILE), (time.time() - PRICES_FILE.stat().st_mtime) / 3600
+        mk = pd.read_pickle(PRICES_FILE)
+        eu = _load_eu(EU_MARKET_FILE)
+        if eu is not None and not eu.empty:
+            mk = pd.concat([mk[~mk["Ticker"].isin(eu["Ticker"])], eu], ignore_index=True)
+        return mk, (time.time() - PRICES_FILE.stat().st_mtime) / 3600
     return None, None
 
 
@@ -355,24 +454,33 @@ def with_valuation(base: pd.DataFrame, mk: pd.DataFrame | None) -> pd.DataFrame:
             df[c] = "—"
         return df
     mk = mk.drop_duplicates("Ticker").set_index("Ticker")
-    for c in ("Precio", "_mcap_nq", "Sector", "Industria", "País"):
+    for c in ("Precio", "_mcap_nq", "Sector", "Industria", "País", "_fx_q", "_fx_r"):
         df[c] = df["Ticker"].map(mk[c]) if c in mk else None
     for c in ("Sector", "Industria", "País"):
         df[c] = df[c].fillna("—")
-    mcap_calc = df["Precio"] * df["Acciones (M)"] * 1e6
+    # Europeas: precio en la divisa de cotización y cuentas en la del informe → todo a $ para comparar tamaños y ratios.
+    fxq = pd.to_numeric(df["_fx_q"], errors="coerce").fillna(1.0)
+    fxr = pd.to_numeric(df["_fx_r"], errors="coerce").fillna(1.0)
+    eu = pd.to_numeric(df["_fx_r"], errors="coerce").notna()
+    if eu.any():
+        for c in ("_debt", "_cash", "_eq", "_fcf", "_op", "_ebitda", "_div", "_rev", "_ni"):
+            df[c] = pd.to_numeric(df[c], errors="coerce") * fxr
+        df.loc[eu, "Ventas (M$)"] = df.loc[eu, "_rev"] / 1e6
+        df.loc[eu, "Beneficio (M$)"] = df.loc[eu, "_ni"] / 1e6
+    mcap_calc = df["Precio"] * fxq * df["Acciones (M)"] * 1e6
     mcap = pd.to_numeric(df["_mcap_nq"], errors="coerce").where(lambda s: s > 0).fillna(mcap_calc)
     ev = mcap + df["_debt"].fillna(0) - df["_cash"].fillna(0)
     df["Capitalización (M$)"] = mcap / 1e6
     df["Valor empresa (M$)"] = ev / 1e6
     pos = lambda s: pd.to_numeric(s, errors="coerce").where(lambda x: x > 0)  # noqa: E731
-    df["PER"] = df["Precio"] / pos(df["BPA"])
+    df["PER"] = (df["Precio"] * fxq) / pos(df["BPA"] * fxr)
     df["PEG"] = df["PER"] / (pos(df["CAGR BPA 5a"]) * 100)
     df["P/Ventas"] = mcap / pos(df["_rev"])
     df["P/Valor contable"] = mcap / pos(df["_eq"])
     df["P/FCF"] = mcap / pos(df["_fcf"])
     df["EV/EBIT"] = ev / pos(df["_op"])
     df["EV/EBITDA"] = ev / pos(df["_ebitda"])
-    df["Rent. beneficio"] = df["BPA"] / df["Precio"]
+    df["Rent. beneficio"] = (df["BPA"] * fxr) / (df["Precio"] * fxq)
     df["Rent. FCF"] = df["_fcf"] / mcap
     df["Rent. dividendo"] = df["_div"].fillna(0) / mcap
     return df
@@ -386,12 +494,14 @@ def with_notas(df: pd.DataFrame) -> pd.DataFrame:
     """Añade las notas del examen financiero calculadas para todo el universo (GitHub Action semanal)."""
     if not NOTAS_FILE.exists():
         for c in NOTA_COLS:
-            df[c] = None
+            if c not in df:
+                df[c] = None
         return df
     n = pd.read_csv(NOTAS_FILE, usecols=lambda c: c in NOTA_COLS + ["Ticker", "CIK"])
     n = n.drop_duplicates("CIK").set_index("CIK")
     for c in NOTA_COLS:
-        df[c] = df["CIK"].map(n[c]) if c in n else None
+        us = df["CIK"].map(n[c]) if c in n else None
+        df[c] = us if c not in df else (pd.Series(us, index=df.index).where(pd.to_numeric(df["CIK"], errors="coerce").fillna(0) > 0, df[c]))
     return df
 
 

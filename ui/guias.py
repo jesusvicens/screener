@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 
 from terminal import onedrive as OD
 from terminal import sec, storage, trimestres
-from ui.common import BLUE, GREEN, MUTED, RED, fmt_cell, show_cols_table
+from ui.common import BLUE, cur, GREEN, MUTED, RED, fmt_cell, show_cols_table
 
 AMBER = "#e07b39"
 METRICAS = [("Ingresos", "m"), ("BPA non-GAAP", "ps"), ("BPA GAAP", "ps"), ("Ingresos BP&C", "m"), ("Ingresos C&MP", "m"),
@@ -22,7 +22,7 @@ def _fmt(v, kind):
     """Cifra con su unidad: millones de $ («M$»), $ por acción («$») o millones de acciones («M acc.»)."""
     if v is None:
         return "—"
-    return fmt_cell(v, "m" if kind == "sh" else kind) + {"m": " M$", "ps": " $", "sh": " M acc."}.get(kind, "")
+    return fmt_cell(v, "m" if kind == "sh" else kind) + {"m": f" M{cur()}", "ps": f" {cur()}", "sh": " M acc."}.get(kind, "")
 
 
 def _rng(r, kind):
@@ -134,7 +134,7 @@ def _kpis(ca, data):
     # segmentos trimestrales (XBRL)
     try:
         from terminal import segmentos as SG
-        sq = SG.quarterly(int(ca.meta["cik"]))
+        sq = SG.quarterly(int(ca.meta["cik"])) if int(ca.meta.get("cik") or 0) else pd.DataFrame()
         d = sq[sq["Tipo"] == "Segmento"].pivot_table(index="Fin", columns=["Dato", "Miembro"], values="Valor") if not sq.empty else None
     except Exception:  # noqa: BLE001
         d = None
@@ -478,6 +478,8 @@ def _transcripcion(T, ca, sel):
 
 
 def _xbrl(ca):
+    if not int(ca.meta.get("cik") or 0):
+        return  # empresa europea: sin 10-Q
     try:
         df = trimestres.quarterly(sec.company_facts(int(ca.meta["cik"])), n_years=5)
     except Exception as e:  # noqa: BLE001
