@@ -64,8 +64,6 @@ def tab(T: str, ca):
     names = ["Guía vs. resultado", "Evolución de la guía anual", "Trimestre a trimestre",
              "Resultados publicados" if eu else "Resultados trimestrales (SEC)"]
     extra = []
-    if data.get("estrategia_anual"):
-        extra.append(("Estrategia año a año", lambda: _estrategia(data)))
     if data.get("kpis"):
         extra.append(("KPIs y segmentos: dicho vs. hecho", lambda: _kpis(ca, data)))
     tabs = st.tabs([n for n, _ in extra] + names, key=f"guias_tabs_{T}")
@@ -189,6 +187,16 @@ def _kpis(ca, data):
     show_cols_table(t, height=min(38 + 35 * len(t), 700), kinds={lab: "pct" for _k, lab in KPI_COLS})
     st.caption("Variaciones interanuales tal como las dijo la dirección (a veces «casi», «más de»); vacío = no lo dijeron en esa call. "
                "Los nombres de cada indicador cambian algo con los años (p. ej. qué incluye «no aseguradoras»).")
+
+
+def estrategia_tab(T: str):
+    """Pestaña «Estrategia año a año» (grupo Negocio)."""
+    data = (storage.load(T) or {}).get("guias") or {}
+    if not data.get("estrategia_anual"):
+        st.info("Aún no está la estrategia año a año de esta empresa. Pídemela en el chat: la saco de las presentaciones de "
+                "resultados y de las transcripciones de las calls.")
+        return
+    _estrategia(data)
 
 
 def _estrategia(data):
@@ -453,11 +461,11 @@ def _trimestre(T, ca, qs):
 
 def _transcripcion(T, ca, sel):
     if not (OD.configured() and OD.connected()):
-        st.caption("Conecta OneDrive (pestaña «Cualitativo y documentos») para ver aquí las transcripciones que guardas en la carpeta de la empresa.")
+        st.caption("Conecta OneDrive (Seguimiento → Documentos) para ver aquí las transcripciones que guardas en la carpeta de la empresa.")
         return
     folder = OD.settings()["carpetas"].get(T)
     if not folder:
-        st.caption("Guarda la carpeta de OneDrive de esta empresa (pestaña «Cualitativo y documentos» → Documentos) para buscar la transcripción.")
+        st.caption("Guarda la carpeta de OneDrive de esta empresa (Seguimiento → Documentos) para buscar la transcripción.")
         return
     try:
         from ui.cualitativo import _tree_cached

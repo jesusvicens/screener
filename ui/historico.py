@@ -382,7 +382,7 @@ def _chart_quarterly(labels, vals, kind, label, growth_label):
 def _quarter_view(ca, key, kind, label, freq):
     if not int(ca.fin.cik or 0):
         st.info("Empresa europea: en formato ESEF solo se publica el informe anual. Las cifras semestrales o trimestrales "
-                "están en sus notas de prensa y las podemos recoger en «Guías y resultados».")
+                "están en sus notas de prensa y las podemos recoger en Seguimiento → «Resultados y guías».")
         return
     try:
         q, t = _quarterly(int(ca.fin.cik))

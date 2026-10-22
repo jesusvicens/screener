@@ -243,10 +243,6 @@ def page():
             pass
     _save_bar(T, work, ca)
 
-    def _cual():
-        from ui import cualitativo
-        cualitativo.tab(T, ca, ca.answers, st.session_state.get(_key(T, "cual_motivos"), {}) or {})
-
     def _guias():
         from ui import guias
         explica("guias")
@@ -256,33 +252,54 @@ def page():
         import importlib
         return lambda: importlib.import_module(f"ui.{name}").tab(*args)
 
-    # Dos niveles: primero el grupo (datos → análisis → valoración → propiedad y fuentes) y dentro, sus pestañas.
+    def _dossier():
+        from ui import cualitativo
+        cualitativo.dossier_tab(T)
+
+    def _estrategia():
+        from ui import guias
+        guias.estrategia_tab(T)
+
+    def _documentos():
+        from ui import cualitativo
+        cualitativo.documentos_tab(T, ca)
+        st.markdown("---")
+        (_tab_informes_eu if eu else _tab_filings)(ca)
+
+    def _examen():
+        _tab_examen(T, ca)
+        from ui import cualitativo
+        st.markdown("## Examen cualitativo: respuestas y motivos")
+        cualitativo.resumen_cualitativo(T, ca, ca.answers, st.session_state.get(_key(T, "cual_motivos"), {}) or {})
+
+    # Cuatro preguntas, en el orden en que se analiza una empresa:
+    # ¿qué negocio es? → ¿qué dicen las cuentas? → ¿a qué precio? → ¿cómo va y qué tengo?
     # Solo se dibuja la pestaña abierta (más rápido) y cada grupo recuerda la suya.
     grupos = {
-        ":material/bar_chart: Datos": [
+        ":material/storefront: Negocio": [
+            (":material/menu_book: Dossier", _dossier),
+            (":material/route: Estrategia año a año", _estrategia),
+            (":material/pie_chart: Segmentos y tiendas" if eu else ":material/pie_chart: Segmentos", _mod("segmentos", T, ca)),
+            (":material/groups: Comparables", _mod("comparables", T, ca)),
+        ],
+        ":material/bar_chart: Números": [
             (":material/dashboard: Resumen", lambda: _tab_resumen(ca)),
             (":material/show_chart: Histórico", lambda: _tab_historico(T, ca)),
             (":material/table_chart: Estados financieros", lambda: _tab_estados(ca)),
-            (":material/pie_chart: Segmentos y tiendas" if eu else ":material/pie_chart: Segmentos", _mod("segmentos", T, ca)),
-            (":material/flag: Guías y resultados", _guias),
-        ],
-        ":material/search: Análisis": [
-            (":material/checklist: Examen", lambda: _tab_examen(T, ca)),
-            (":material/menu_book: Cualitativo y documentos", _cual),
-            (":material/groups: Comparables", _mod("comparables", T, ca)),
             (":material/trending_up: ROIC", lambda: _tab_roic(T, ca)),
-            (":material/calculate: Modelo EPS", lambda: _tab_eps(ca)),
+            (":material/checklist: Examen y nota", _examen),
         ],
         ":material/balance: Valoración": [
+            (":material/calculate: Modelo BPA", lambda: _tab_eps(ca)),
             (":material/stacked_line_chart: Bandas y sensibilidad", _mod("bandas", T, ca)),
             (":material/balance: Escenarios y valoración", lambda: _tab_escenarios(T, ca)),
             (":material/warning: Riesgo", lambda: _tab_riesgo(T, ca)),
         ],
-        ":material/folder_open: Propiedad y fuentes": [
+        ":material/push_pin: Seguimiento": [
+            (":material/flag: Resultados y guías", _guias),
+            (":material/edit_note: Mis notas y bitácora", lambda: _tab_notas(T, ca)),
             (":material/badge: Directivos y fondos", (lambda: _eu_info("propiedad")) if eu else _mod("propiedad", T, ca)),
-            ((":material/description: Informes", lambda: _tab_informes_eu(ca)) if eu
-             else (":material/description: SEC", lambda: _tab_filings(ca))),
-            (":material/edit_note: Notas", lambda: _tab_notas(T, ca)),
+            (":material/folder_open: Documentos", _documentos),
         ],
     }
     if st.session_state.get("ficha_grupo") not in grupos:
@@ -300,32 +317,28 @@ def page():
                 fn()
 
 
-# Datos (azul), Análisis (violeta), Valoración (verde), Propiedad y fuentes (naranja): texto blanco legible en todos
+# Negocio (azul), Números (violeta), Valoración (verde), Seguimiento (naranja): texto blanco legible en todos
 _GRUPO_COLORES = ["#1d4ed8", "#6d28d9", "#047857", "#c2410c"]
 _GRUPO_DEGRADADOS = [("#1e3a8a", "#2563eb"), ("#4c1d95", "#7c3aed"), ("#064e3b", "#059669"), ("#9a3412", "#ea580c")]
 
 
 def _barra_css(gi: int) -> str:
-    """Barra de pestañas del grupo abierto: a todo el ancho, degradado del color del grupo y texto blanco.
-    Solo la barra principal (selectores hijo directo): las pestañas anidadas solo toman el color del grupo."""
-    a, b = _GRUPO_DEGRADADOS[gi]
+    """Pestañas del grupo abierto: sencillas, sin fondo; la abierta, subrayada y en el color del grupo."""
+    c = _GRUPO_COLORES[gi]
     k = f".st-key-ficha_tabs_{gi} > div > [role='tablist']"
     return (
         "<style>"
-        f"{k}{{display:flex;width:100%;background:linear-gradient(90deg,{a},{b});border-radius:10px;padding:4px;gap:4px;"
-        "box-shadow:0 2px 8px rgba(0,0,0,.12);border:none}"
-        f"{k} > [role='tab']{{flex:1 1 0;justify-content:center;text-align:center;border-radius:7px;padding:.5rem .6rem;"
-        "margin:0;transition:background .15s}"
-        f"{k} > [role='tab'] p, {k} > [role='tab'] span{{color:rgba(255,255,255,.85) !important;font-weight:500}}"
-        f"{k} > [role='tab']:hover{{background:rgba(255,255,255,.12)}}"
-        f"{k} > [role='tab'][aria-selected='true']{{background:rgba(255,255,255,.24);box-shadow:inset 0 -3px 0 #fff}}"
-        f"{k} > [role='tab'][aria-selected='true'] p, {k} > [role='tab'][aria-selected='true'] span"
-        "{color:#fff !important;font-weight:700}"
-        f"{k} .react-aria-SelectionIndicator{{display:none}}"
-        f".stTabs [role='tab'][aria-selected='true'] p{{color:{_GRUPO_COLORES[gi]}}}"
-        f".stTabs .react-aria-SelectionIndicator{{background-color:{_GRUPO_COLORES[gi]} !important}}"
+        f"{k}{{display:flex;width:100%;gap:.3rem;border-bottom:2px solid #e5e7eb}}"
+        f"{k} > [role='tab']{{flex:1 1 0;justify-content:center;text-align:center;padding:.5rem .4rem;outline:none !important;border:none !important;box-shadow:none !important}}"
+        f"{k} > [role='tab'] p{{font-weight:500;color:#4b5563}}"
+        f"{k} > [role='tab']:hover p{{color:{c}}}"
+        f"{k} > [role='tab'][aria-selected='true'] p{{color:{c} !important;font-weight:700}}"
+        f".stTabs [role='tab'][aria-selected='true'] p{{color:{c}}}"
+        f".stTabs .react-aria-SelectionIndicator{{background-color:{c} !important;height:3px}}"
         "</style>"
     )
+
+
 _GRUPOS_CSS = "<style>" + "".join(
     f".st-key-ficha_grupos [data-testid='stButtonGroup'] button:nth-of-type({i + 1}){{"
     f"background:linear-gradient(90deg,{a},{b}) !important;border-color:{a} !important;opacity:.45;transition:all .15s}}"
@@ -350,7 +363,7 @@ def _eu_info(que: str):
     textos = {
         "segmentos": "En Europa, el desglose por segmentos va en las notas del informe anual y el formato ESEF no lo etiqueta "
                      "cifra a cifra, así que no puedo leerlo automáticamente. Lo tienes en el informe anual (pestaña «Informes») "
-                     "y lo podemos recoger en «Guías y resultados» desde las presentaciones de resultados.",
+                     "y lo podemos recoger en Seguimiento → «Resultados y guías» desde las presentaciones de resultados.",
         "propiedad": "Las compras y ventas de directivos (formulario 4) y las carteras de los grandes fondos (13F) son registros de "
                      "la SEC: solo existen para empresas que cotizan en EE. UU. En Europa, las operaciones de directivos se publican "
                      "en cada regulador (AMF, CNMV, BaFin…) y no hay una fuente única gratuita.",

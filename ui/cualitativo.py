@@ -100,6 +100,30 @@ def tab(T: str, ca, answers: dict, motivos: dict):
         _dossier_editor(T)
 
 
+def dossier_tab(T: str):
+    """Pestaña «Dossier»: el análisis cualitativo como documento, con el editor al final."""
+    k = f"dossier_{T}"
+    st.session_state[k] = (storage.load(T) or {}).get("dossier", "")  # siempre lo guardado (cambios hechos fuera de la app)
+    intro, secs = _secciones(st.session_state[k])
+    if secs:
+        _dossier_doc(intro, secs)
+    else:
+        st.info("Aún no hay dossier para esta empresa. Pídemelo en el chat (leo tus documentos de OneDrive y el informe anual) o "
+                "escríbelo abajo: cada título que empiece por «### » se convierte en un apartado del índice.")
+    with st.expander("✏️ Editar dossier", expanded=not secs):
+        _dossier_editor(T)
+
+
+def documentos_tab(T: str, ca):
+    """Pestaña «Documentos»: tu carpeta de OneDrive de la empresa (las presentaciones oficiales van debajo)."""
+    st.markdown("## Tu carpeta de OneDrive")
+    _documentos(T, ca)
+
+
+def resumen_cualitativo(T, ca, answers, motivos):
+    _resumen_cualitativo(T, ca, answers, motivos)
+
+
 def _resumen_cualitativo(T, ca, answers, motivos):
     sc = E.score(answers)
     cols = st.columns(len(E.QUALITATIVE_BLOCKS) + 1)
@@ -109,7 +133,7 @@ def _resumen_cualitativo(T, ca, answers, motivos):
         n = sc["blocks"][b]["nota"]
         c.metric(b, f"{n:.1f}" if (n is not None and sc["blocks"][b]["answered"]) else "—")
     if not sc["cual_respondidas"]:
-        st.info("Aún no has contestado el examen cualitativo de esta empresa (pestaña «Examen»). Puedes pedírmelo en el chat "
+        st.info("Aún no has contestado el examen cualitativo de esta empresa (Números → «Examen y nota»). Puedes pedírmelo en el chat "
                 "y lo guardo aquí con el motivo de cada respuesta.")
         return
     qs = [q for q in E.QUESTIONS if q[1] in E.QUALITATIVE_BLOCKS]

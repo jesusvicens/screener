@@ -5,7 +5,7 @@ Configuración (una vez):
    «Personal Microsoft accounts only», sin URI de redirección. Copia el «Application (client) ID».
 2. En Authentication activa «Allow public client flows».
 3. Pon el client id en DEFAULT_CLIENT_ID (abajo) o en los Secrets como ONEDRIVE_CLIENT_ID
-4. En la ficha de una empresa → pestaña «Cualitativo y documentos» → «Conectar OneDrive» y entra con tu cuenta.
+4. En la ficha de una empresa → pestaña Seguimiento → «Documentos» → «Conectar OneDrive» y entra con tu cuenta.
 
 Permisos que pide: Files.ReadWrite (leer tus ficheros y guardar el informe «… - Análisis terminal.docx» en la carpeta de
 cada empresa; nunca modifica ni borra tus propios documentos), offline_access y User.Read.

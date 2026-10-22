@@ -171,4 +171,4 @@ def calendario_tab(df: pd.DataFrame, d: dict, gu: dict):
                         kinds={"Faltan (días)": "int"},
                         column_config={"Empresa": st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$")})
     st.caption("Fecha estimada con el calendario de años anteriores (las empresas suelen presentar en la misma semana). "
-               "Confírmala en su web de inversores. Cuando presente, abre su ficha → «Guías y resultados».")
+               "Confírmala en su web de inversores. Cuando presente, abre su ficha → Seguimiento → «Resultados y guías».")
