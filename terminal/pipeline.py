@@ -41,6 +41,21 @@ def load_company(ticker: str, n_years: int = 10) -> tuple[dict, F.Financials, pd
         if facts.get("informes") is not None and len(fin.years) < 8:
             fin.warnings.append(f"Empresa europea: {len(fin.years)} ejercicios en formato ESEF (obligatorio en la UE desde 2020; "
                                 "cada informe trae también el año anterior).")
+        if not any(fin.get("shares_diluted", y) for y in fin.years):
+            try:  # el informe no trae nº de acciones ni BPA: las acciones actuales de Yahoo para todos los años
+                import yfinance as yf
+                sh = yf.Ticker(meta["ticker"]).fast_info.get("shares")
+            except Exception:  # noqa: BLE001
+                sh = None
+            if sh:
+                for y in fin.years:
+                    fin.data.setdefault("shares_diluted", {})[y] = sh / 1e6
+                    ni = fin.get("net_income", y)
+                    if ni is not None and fin.get("eps_diluted", y) is None:
+                        fin.data.setdefault("eps_diluted", {})[y] = ni / (sh / 1e6)
+                fin.warnings = [w for w in fin.warnings if "BPA" not in w and "Acciones" not in w] + [
+                    f"El informe no etiqueta el nº de acciones: BPA calculado con las {sh / 1e6:,.0f} M de acciones actuales "
+                    "(Yahoo) para todos los años; si ha habido recompras, el BPA antiguo sale algo bajo."]
         hist = prices.history(meta["ticker"], years=n_years + 2)
         return meta, fin, hist
     facts = sec.company_facts(meta["cik"])
