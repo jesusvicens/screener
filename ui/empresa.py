@@ -164,21 +164,51 @@ def _risk_inputs(T: str) -> dict:
             "supervivencia": [s.get(_key(T, "surv", i), "") for i in range(len(R.SURVIVAL_QUESTIONS))]}
 
 
+def _corto(nombre: str) -> str:
+    n = nombre.split(",")[0].strip()
+    return n if len(n) <= 26 else n[:25].rstrip() + "…"
+
+
 # ------------------------------------------------------------------ página
 def page():
     st.markdown("<span class='subtle'>FICHA DE EMPRESA</span>", unsafe_allow_html=True)
-    opts = _universe_options()
-    qt = st.query_params.get("ticker")  # enlace desde el screener (pestaña nueva)
-    if qt:
-        st.session_state["ticker"] = qt.strip().upper()
-        del st.query_params["ticker"]
-    default = st.session_state.get("ticker", "ADBE")
-    idx = next((i for i, o in enumerate(opts) if o.split(" · ")[0] == default), 0)
+    from ui import buscador
+    mis = buscador.mis_tickers()
+    tickers, fmt = buscador.opciones(mis)
+    # «ticker» va en la dirección (…/empresa?ticker=RMS.PA): al recargar la página sigue la misma empresa,
+    # y los enlaces de las listas y del screener la abren directamente.
+    qt = (st.query_params.get("ticker") or "").strip().upper()
+    if qt and qt != st.session_state.get("_qt_visto"):  # enlace o recarga con ?ticker=…
+        st.session_state["_qt_visto"] = qt
+        st.session_state["ficha_t"] = qt
+    cur_t = st.session_state.get("ficha_t")
+    if cur_t and cur_t not in tickers:
+        tickers = [cur_t] + tickers
     c1, c2 = st.columns([4, 1])
-    sel = c1.selectbox("Empresa", opts, index=idx, label_visibility="collapsed", placeholder="Busca ticker o nombre…")
+    T = c1.selectbox("Empresa", tickers, index=None, key="ficha_t", persist_state="session", format_func=fmt,
+                     label_visibility="collapsed",
+                     placeholder="🔎 Escribe el nombre o el ticker (p. ej. «hermes», «AAPL», «copart»)…",
+                     help="Busca por nombre o ticker. ★ = en tus listas; el resto, de mayor a menor capitalización.")
     n_years = c2.selectbox("Años", [10, 12, 15], index=0, label_visibility="collapsed", format_func=lambda x: f"{x} años")
-    T = sel.split(" · ")[0]
+    rec = [t for t in st.session_state.get("_recientes", []) if t != T][:8]
+    if rec or mis:
+        sug = rec or [t for t in mis if t != T][:8]
+        kp = f"ficha_rec_{T}"
+
+        def _ir():
+            if st.session_state.get(kp):
+                st.session_state["ficha_t"] = st.session_state[kp]
+
+        st.pills("Recientes" if rec else "De tus listas", sug, selection_mode="single", key=kp, on_change=_ir,
+                 format_func=lambda t: _corto(fmt(t).replace("★ ", "").split(" · ")[0]) + f" ({t})", label_visibility="collapsed")
+    if not T:
+        st.info("Elige una empresa en el buscador, o vuelve a **Inicio** para ver tus listas.")
+        return
+    if T != qt:  # la empresa abierta queda en la dirección: al recargar sigue aquí
+        st.query_params["ticker"] = T
+        st.session_state["_qt_visto"] = T
     st.session_state["ticker"] = T
+    st.session_state["_recientes"] = [T] + [t for t in st.session_state.get("_recientes", []) if t != T][:15]
 
     from terminal.esef import is_european
     eu = is_european(T)
@@ -405,9 +435,11 @@ def _header(ca: pipeline.CompanyAnalysis):
 
 
 def _save_bar(T, work, ca):
-    c1, c2, c4, c5, c3 = st.columns([1, 1, 1, 1.7, 1.3])
+    c1, c2, c4, c3 = st.columns([1, 1, 1, 1.6])
     from ui.prioridad import selector_lista
-    selector_lista(T, c5)
+    lc = st.columns([0.55, 5])
+    lc[0].markdown("<div class='subtle' style='padding-top:.45rem'>Mis listas:</div>", unsafe_allow_html=True)
+    selector_lista(T, lc[1])
     if c4.button("↺ Volver a lo guardado", width="stretch", help="Descarta los cambios sin guardar de esta empresa."):
         _reset_widgets(T)
         st.session_state.pop(f"saved_{T}", None)

@@ -19,8 +19,7 @@ def _screen_table(base_stamp: float, mk_stamp: float, notas_stamp: float = 0.0):
 
 
 def _go_company(t: str):
-    st.session_state["ticker"] = t
-    st.switch_page(st.session_state["_page_empresa"])
+    st.switch_page(st.session_state["_page_empresa"], query_params={"ticker": t})
 
 
 def _to_ui(m, v):

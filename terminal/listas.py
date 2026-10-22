@@ -13,7 +13,8 @@ import pandas as pd
 from . import storage
 
 DOC = "_LISTAS"
-DEFAULT_GROUPS = ["A analizar", "Analizadas", "Para más adelante", "Caras (esperar precio)", "Descartadas"]
+CARTERA = "En cartera"
+DEFAULT_GROUPS = [CARTERA, "A analizar", "Analizadas", "Para más adelante", "Caras (esperar precio)", "Descartadas"]
 
 
 def _norm(e: dict) -> dict:
@@ -36,6 +37,10 @@ def load() -> dict:
         for g in e["listas"]:
             if g not in grupos:
                 grupos.append(g)
+    if CARTERA not in grupos:  # «En cartera» siempre existe y va la primera
+        grupos.insert(0, CARTERA)
+    else:
+        grupos.insert(0, grupos.pop(grupos.index(CARTERA)))
     return {"grupos": grupos, "empresas": {t: e for t, e in emp.items() if e["listas"]}}
 
 
@@ -164,3 +169,24 @@ def _prioridad_simple(df: pd.DataFrame) -> pd.Series:
     rfcf = rfcf.where(~((rfcf > 0.30) | ((per > 0) & (per < 3))))
     barata = (rfcf.rank(pct=True) * 10).fillna(5.0)
     return (PESO_NOTA * nota + PESO_PRECIO * barata).round(2)
+
+
+def posiciones_abiertas(movimientos: list[dict]) -> list[str]:
+    """Tickers con acciones en cartera según tus movimientos (compras − ventas, con splits)."""
+    sh: dict[str, float] = {}
+    for m in sorted(movimientos or [], key=lambda r: str(r.get("Fecha", ""))):
+        t = str(m.get("Ticker") or "").upper()
+        if not t:
+            continue
+        try:
+            q = float(m.get("Acciones") or 0)
+        except (TypeError, ValueError):
+            continue
+        tipo = m.get("Tipo")
+        if tipo == "Compra":
+            sh[t] = sh.get(t, 0) + q
+        elif tipo == "Venta":
+            sh[t] = sh.get(t, 0) - q
+        elif tipo == "Split" and q > 0:
+            sh[t] = sh.get(t, 0) * q
+    return sorted(t for t, v in sh.items() if v > 1e-9)

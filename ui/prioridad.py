@@ -19,10 +19,17 @@ def _guardados() -> dict[str, dict]:
             t = str(it.get("ticker", "")).upper()
             if t and not t.startswith("_"):
                 out[t] = {"resumen": it.get("resumen") or {}, "actualizado": it.get("actualizado"),
-                          "mos": ((it.get("params") or {}).get("mos"))}
+                          "mos": ((it.get("params") or {}).get("mos")), "frase": _frase(it.get("dossier") or "")}
     except Exception:  # noqa: BLE001
         pass
     return out
+
+
+def _frase(dossier: str) -> str:
+    """El primer párrafo de «En una frase» del dossier (para la descripción breve)."""
+    import re
+    m = re.search(r"### En una frase\s*\n+(.+?)(?:\n\s*\n|\n###|$)", dossier, re.S)
+    return re.sub(r"[*_`]", "", m.group(1)).strip() if m else ""
 
 
 def _listas() -> dict:
@@ -309,5 +316,6 @@ def selector_lista(ticker: str, container=None):
         sel = st.session_state[k]
         _guardar(listas.set_lists(dd, ticker, sel), f"{ticker}: " + (", ".join(sel) if sel else "fuera de tus listas"))
 
-    box.multiselect("Listas", d["grupos"], key=k, on_change=_cambio, label_visibility="collapsed", placeholder="Añadir a mis listas…",
-                    help="Puedes ponerla en varias listas a la vez (Screener → Prioridad y mis listas)")
+    from ui.inicio import CORTO
+    box.pills("Listas", d["grupos"], selection_mode="multi", key=k, on_change=_cambio, label_visibility="collapsed", wrap=True,
+              format_func=lambda g: CORTO.get(g, g), help="Clic para poner o quitar la empresa de cada lista (puede estar en varias)")

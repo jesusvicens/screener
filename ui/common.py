@@ -260,7 +260,7 @@ def link_key() -> str:
 
 def company_url(ticker: str, name: str = "") -> str:
     k = link_key()
-    return f"./?ticker={ticker}" + (f"&k={k}" if k else "") + f"#{name or ticker}"
+    return f"./empresa?ticker={ticker}" + (f"&k={k}" if k else "") + f"#{name or ticker}"
 
 
 def show_cols_table(df: pd.DataFrame, height: int | None = None, kinds: dict | None = None, column_config: dict | None = None):
