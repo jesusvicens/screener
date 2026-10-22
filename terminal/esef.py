@@ -276,7 +276,7 @@ def universe() -> list[dict]:
     data = []
     try:
         from . import remoto
-        raw = remoto.public_file(UNIVERSE_FILE)
+        raw = remoto.public_file(UNIVERSE_FILE, branch=remoto.EUROPA_BRANCH)
         if raw:
             data = json.loads(raw)
     except Exception:  # noqa: BLE001
