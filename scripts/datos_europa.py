@@ -43,6 +43,9 @@ HOME = {"FR": ["PA"], "NL": ["AS"], "BE": ["BR"], "PT": ["LS"], "IE": ["IR", "L"
         "IS": ["IC"], "EE": ["TL"], "LT": ["VS"], "LV": ["RG"], "CH": ["SW"], "MT": [], "CY": ["AT"], "HR": [], "SI": [],
         "RO": [], "BG": []}
 NOW = datetime.now(timezone.utc)
+# Divisa de cotización por bolsa, si Yahoo no la da (Londres cotiza en peniques).
+SUFFIX_CCY = {**{k: "EUR" for k in ("PA", "AS", "BR", "LS", "IR", "MC", "MI", "DE", "F", "VI", "HE", "AT", "TL", "VS", "RG")},
+              "ST": "SEK", "CO": "DKK", "OL": "NOK", "WA": "PLN", "PR": "CZK", "BD": "HUF", "IC": "ISK", "SW": "CHF", "L": "GBp"}
 
 
 def log(*a):
@@ -147,11 +150,13 @@ def map_entity(lei: str, name: str, country: str, isins: list[str]) -> dict:
     pref = sorted(isins, key=lambda x: (not x.startswith(country[:2]), x))[:6] if len(isins) <= 60 else \
         [x for x in isins if x.startswith(country[:2])][:3]
     for isin in pref:
+        if isin[:2] not in HOME and isin[:2] not in ("JE", "GG", "IM", "BM", "KY", "LI", "MC"):
+            continue  # acciones no europeas (p. ej. un banco canadiense con bonos en la UE)
         q = _eu_equity(_yahoo_search(isin), country)
         if q:
             return {"ticker": q["symbol"], "isin": isin, "via": "isin", "yname": q.get("longname") or q.get("shortname")}
     q = _eu_equity(_yahoo_search(name), country)
-    if q:
+    if q and q["symbol"].rsplit(".", 1)[1] in HOME.get(country, []):
         sim = difflib.SequenceMatcher(None, _norm(name), _norm(q.get("longname") or q.get("shortname") or "")).ratio()
         if sim >= 0.72:
             return {"ticker": q["symbol"], "isin": None, "via": f"nombre ({sim:.2f})", "yname": q.get("longname") or q.get("shortname")}
@@ -306,7 +311,14 @@ def main():
                     log(f"  mapeadas {i + 1}/{len(pend)} · con ticker: {sum(1 for x in mapeo.values() if x.get('ticker')):,}")
         if time.time() > map_deadline:
             log("  (tiempo de mapeo agotado: sigue en la próxima ejecución)")
-    tick = {lei: m["ticker"] for lei, m in mapeo.items() if m.get("ticker") and lei in recent}
+    def valid(lei, m):
+        if not m.get("ticker") or lei not in recent:
+            return False
+        if m.get("isin"):
+            return m["isin"][:2] in HOME or m["isin"][:2] in ("JE", "GG", "IM", "BM", "KY", "LI", "MC")
+        return m["ticker"].rsplit(".", 1)[1] in HOME.get(country.get(lei) or "", [])
+
+    tick = {lei: m["ticker"] for lei, m in mapeo.items() if valid(lei, m)}
     # un ticker, una empresa (si dos LEI dan el mismo ticker, se queda el que tiene informes más recientes)
     seen: dict[str, str] = {}
     for lei, t in sorted(tick.items(), key=lambda kv: max(f["added"] for f in filings[kv[0]])):
@@ -366,16 +378,38 @@ def main():
             row[c] = nota.get(c)
         rows.append(row)
         uni.append({k: m[k] for k in ("ticker", "lei", "name", "country", "exchange", "currency", "isin")})
+    # Sin nº de acciones en el informe: las de Yahoo (para poder calcular capitalización y BPA).
+    sin_acc = [r for r in rows if not r.get("Acciones (M)")]
+    if sin_acc:
+        import yfinance as yf
+
+        def shares(t):
+            try:
+                return t, yf.Ticker(t).fast_info.get("shares")
+            except Exception:  # noqa: BLE001
+                return t, None
+
+        with ThreadPoolExecutor(6) as ex:
+            got = dict(ex.map(shares, [r["Ticker"] for r in sin_acc]))
+        for r in sin_acc:
+            sh = got.get(r["Ticker"])
+            if sh:
+                r["Acciones (M)"] = sh / 1e6
+                if r.get("BPA") is None and r.get("_ni") is not None:
+                    r["BPA"] = r["_ni"] / sh
+                r["Acciones de"] = "Yahoo"
+        log(f"Acciones de Yahoo: {sum(1 for r in sin_acc if r.get('Acciones de'))}/{len(sin_acc)}")
     base = pd.DataFrame(rows)
     log(f"Filas del screener: {len(base):,}")
 
     # --- precios y divisas
     px = last_prices(sorted(base["Ticker"])) if not base.empty else {}
-    fx = fx_rates({(yinfo.get(t) or {}).get("currency") or "" for t in base["Ticker"]} | set(base.get("Divisa", pd.Series(dtype=str)).dropna()))
+    fx = fx_rates({(yinfo.get(t) or {}).get("currency") or "" for t in base["Ticker"]} | set(SUFFIX_CCY.values())
+                  | set(base.get("Divisa", pd.Series(dtype=str)).dropna()))
     mk = []
     for r in rows:
         t = r["Ticker"]
-        qc = (yinfo.get(t) or {}).get("currency") or r["Divisa"]
+        qc = (yinfo.get(t) or {}).get("currency") or SUFFIX_CCY.get(t.rsplit(".", 1)[1]) or r["Divisa"]
         mk.append({"Ticker": t, "Precio": px.get(t), "_mcap_nq": None, "Sector": (yinfo.get(t) or {}).get("sector") or "—",
                    "Industria": (yinfo.get(t) or {}).get("industry") or "—",
                    "País": esef.COUNTRY_NAMES.get(country.get(r["LEI"]) or "", country.get(r["LEI"]) or "—"),

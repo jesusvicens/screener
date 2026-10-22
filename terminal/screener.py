@@ -470,6 +470,13 @@ def with_valuation(base: pd.DataFrame, mk: pd.DataFrame | None) -> pd.DataFrame:
     mcap_calc = df["Precio"] * fxq * df["Acciones (M)"] * 1e6
     mcap = pd.to_numeric(df["_mcap_nq"], errors="coerce").where(lambda s: s > 0).fillna(mcap_calc)
     ev = mcap + df["_debt"].fillna(0) - df["_cash"].fillna(0)
+    if eu.any():
+        # cruce dudoso entre ticker y cuentas (o acciones mal etiquetadas): sin valoración antes que una valoración absurda
+        ps_ratio = mcap / pd.to_numeric(df["_rev"], errors="coerce").where(lambda x: x > 0)
+        bad = eu & ((mcap > 6e12) | (ps_ratio > 150))
+        mcap = mcap.mask(bad)
+        ev = ev.mask(bad)
+        df.loc[bad, "Precio"] = None
     df["Capitalización (M$)"] = mcap / 1e6
     df["Valor empresa (M$)"] = ev / 1e6
     pos = lambda s: pd.to_numeric(s, errors="coerce").where(lambda x: x > 0)  # noqa: E731

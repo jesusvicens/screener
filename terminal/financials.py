@@ -359,10 +359,16 @@ def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
         sb, sd = g("shares_basic", y), g("shares_diluted", y)
         if sd is None:
             sd = sb
-        if sd is None and ni and g("eps_diluted", y):
-            sd = ni / g("eps_diluted", y)  # muchas europeas no publican el nº medio de acciones en XBRL
-        if sb is None and ni and g("eps_basic", y):
+        # Muchas europeas no publican el nº medio de acciones en XBRL: beneficio / BPA (si el BPA no es de céntimos,
+        # porque entonces el redondeo la hace inservible) o, si no, las acciones emitidas al cierre.
+        if sd is None and ni and g("eps_diluted", y) and abs(g("eps_diluted", y)) >= 0.5:
+            sd = ni / g("eps_diluted", y)
+        if sd is None and g("shares_outstanding", y):
+            sd = g("shares_outstanding", y)
+        if sb is None and ni and g("eps_basic", y) and abs(g("eps_basic", y)) >= 0.5:
             sb = ni / g("eps_basic", y)
+        if sb is None and g("shares_outstanding", y):
+            sb = g("shares_outstanding", y)
         put("shares_basic", y, None if sb is None else sb / M)
         put("shares_diluted", y, None if sd is None else sd / M)
         epsd = g("eps_diluted", y)
