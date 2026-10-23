@@ -216,7 +216,10 @@ def _screener_body():
     if any(c in out.columns for c in ("Cobertura", "Margen de seguridad", "Valor estimado")):
         st.caption("Cobertura, margen de seguridad y valor estimado salen de la **proyección estándar** (los 4 escenarios que la ficha "
                    "propone por fase, r = 10 %, n = 10 años), recalculados con el precio de hoy. Si tienes la empresa analizada con "
-                   "tus supuestos, la ficha manda. Cobertura ∞: ningún escenario queda por debajo del umbral.")
+                   "tus supuestos, la ficha manda. Cobertura ∞: ningún escenario queda por debajo del umbral. "
+                   f"Se dejan en blanco {num(int(df.get('Valoración dudosa', pd.Series(dtype=bool)).fillna(False).sum()))} empresas cuyo valor "
+                   "estimado sale de más de 5 veces el precio o que presentan en otra divisa sin tipo de cambio: casi siempre son datos "
+                   "que no cuadran (un split reciente, un ADR) y conviene mirarlas en la ficha.")
     if len(res) > 1000:
         st.caption("Muestro las 1.000 primeras; afina los filtros o descarga el CSV completo.")
     lb = st.columns([3, 1.4, 1])

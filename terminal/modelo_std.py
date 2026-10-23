@@ -19,7 +19,9 @@ from . import analysis as A
 
 ESC = ("Optimista", "Base", "Adverso", "Desastre")
 R, N, MOS = 0.10, 10, 0.15
-COLS = [f"_vf_{k}" for k in ESC] + [f"_p_{k}" for k in ESC]
+COLS = [f"_vf_{k}" for k in ESC] + [f"_p_{k}" for k in ESC] + ["_moneda"]
+VF_COLS = [c for c in COLS if c != "_moneda"]
+TOPE = 5.0  # valor estimado de más de 5 veces el precio: casi siempre datos que no cuadran (split reciente, ADR en otra divisa…)
 OUT = ["Cobertura", "Margen de seguridad", "Valor estimado", "Rentab. implícita", "Prob. no compensar"]
 
 
@@ -64,7 +66,7 @@ def valores_futuros(fin, price: float | None = None, acciones: float | None = No
 
 def con_cobertura(df: pd.DataFrame) -> pd.DataFrame:
     """Añade Cobertura, Margen de seguridad, Valor estimado (divisa de cotización), Rentab. implícita y Prob. no compensar."""
-    if not all(c in df for c in COLS) or "Precio" not in df:
+    if not all(c in df for c in VF_COLS) or "Precio" not in df:
         for c in OUT:
             if c not in df:
                 df[c] = np.nan
@@ -82,6 +84,13 @@ def con_cobertura(df: pd.DataFrame) -> pd.DataFrame:
     risk = np.nansum(np.where(gap < 0, pr, 0.0), axis=1)
     evf = np.nansum(vf * pr, axis=1)
     ok = np.isfinite(vf).all(axis=1) & np.isfinite(U[:, 0])
+    # Cuentas en otra divisa sin tipo de cambio (ADR que presentan en yuanes, etc.): no se puede comparar con el precio.
+    if "_moneda" in df:
+        mon = df["_moneda"].astype("string")
+        ok &= ~(mon.notna() & (mon != "USD") & fxr.isna()).to_numpy()
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ok &= ~((evf / (1 + R) ** N) > TOPE * P.to_numpy())
+    df["Valoración dudosa"] = np.isfinite(vf).all(axis=1) & ~ok
     with np.errstate(divide="ignore", invalid="ignore"):
         cov = np.where(deficit > 0, opp / deficit, np.inf)
         v_hoy = evf / (1 + R) ** N
@@ -89,7 +98,7 @@ def con_cobertura(df: pd.DataFrame) -> pd.DataFrame:
         rent = np.where(evf > 0, (evf / P.to_numpy()) ** (1 / N) - 1, -1.0)
     df["Cobertura"] = np.where(ok, cov, np.nan)
     df["Margen de seguridad"] = np.where(ok, mos, np.nan)
-    df["Valor estimado"] = np.where(np.isfinite(v_hoy) & (np.isfinite(vf).all(axis=1)), v_hoy / conv.to_numpy(), np.nan)
+    df["Valor estimado"] = np.where(ok | (np.isfinite(v_hoy) & ~np.isfinite(U[:, 0])), v_hoy / conv.to_numpy(), np.nan)
     df["Rentab. implícita"] = np.where(ok, rent, np.nan)
     df["Prob. no compensar"] = np.where(ok, risk, np.nan)
     return df

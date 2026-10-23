@@ -73,7 +73,7 @@ def score_company(facts: dict, ticker: str, price: float | None = None, acciones
            "Nota Cash Flow": None if b["Cash Flow"]["nota"] is None else round(b["Cash Flow"]["nota"], 2),
            "Nota Asignación de capital": None if b["Asignación de capital"]["nota"] is None else round(b["Asignación de capital"]["nota"], 2),
            "Preguntas no aplicables": sum(b[x]["na"] for x in E.FINANCIAL_BLOCKS),
-           "Fase": stats.get("phase"), "Último ejercicio": fin.years[-1]}
+           "Fase": stats.get("phase"), "Último ejercicio": fin.years[-1], "_moneda": fin.currency}
     for qid, (pts, _why) in sug.items():
         row[qid] = pts
     row.update(modelo_std.valores_futuros(fin, price, acciones) or {})  # proyección estándar (4 escenarios) → cobertura y margen
