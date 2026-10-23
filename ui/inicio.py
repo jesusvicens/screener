@@ -55,6 +55,23 @@ def _css():
     .ini-num { text-align: right; font-variant-numeric: tabular-nums; padding-top: .35rem; }
     .ini-head { color: #6b7280; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
     .ini-pos { color: #15803d; } .ini-neg { color: #b91c1c; }
+    .ag-grupo { color: #6b7280; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+                margin: .55rem 0 .2rem; }
+    .ag-row { display: flex; gap: .6rem; align-items: baseline; padding: .28rem 0; border-bottom: 1px solid #f1f3f6; }
+    .ag-fecha { min-width: 4.6rem; font-weight: 650; color: #1f2937; font-size: .85rem; }
+    .ag-dias { color: #6b7280; font-size: .72rem; display: block; font-weight: 400; }
+    .ag-emp a { font-weight: 600; color: #1f2937; text-decoration: none; font-size: .88rem; }
+    .ag-emp a:hover { color: #1a5fb4; text-decoration: underline; }
+    .ag-ev { color: #4b5563; font-size: .78rem; }
+    .ag-tag { font-size: .66rem; padding: .05rem .4rem; border-radius: 999px; margin-left: .3rem; white-space: nowrap; }
+    .ag-ok { background: #e7f6ec; color: #15803d; } .ag-y { background: #eef2ff; color: #3949ab; } .ag-est { background: #f3f4f6; color: #6b7280; }
+    .nt-item { padding: .45rem 0 .5rem; border-bottom: 1px solid #f1f3f6; }
+    .nt-meta { color: #6b7280; font-size: .72rem; }
+    .nt-tk { background: #eef2f7; color: #1f2937; font-weight: 700; border-radius: 4px; padding: 0 .35rem; margin-right: .3rem; font-size: .7rem; }
+    .nt-alta { border-left: 3px solid #d97706; padding-left: .55rem; }
+    .nt-tit { font-weight: 650; color: #1f2937; font-size: .9rem; line-height: 1.3; text-decoration: none; }
+    a.nt-tit:hover { color: #1a5fb4; text-decoration: underline; }
+    .nt-res { color: #4b5563; font-size: .8rem; line-height: 1.35; margin-top: .1rem; }
     div[class*="st-key-ini_l_"] button { padding: .1rem .55rem !important; min-height: 1.7rem !important; font-size: .8rem !important; }
     </style>""", unsafe_allow_html=True)
 
@@ -103,6 +120,9 @@ def page():
     if not d["empresas"]:
         st.info("Aún no tienes empresas en tus listas. Añade la primera con el buscador de arriba.")
         return
+
+    # --- agenda: próximos resultados y noticias
+    _agenda(d, gu, idx)
 
     # --- filtro por lista y orden
     cuenta = {g: len(listas.in_list(d, g)) for g in d["grupos"]}
@@ -170,3 +190,109 @@ def page():
                    label_visibility="collapsed", wrap=True, format_func=lambda g: CORTO.get(g, g))
     st.caption("Pasa el ratón por el nombre para ver qué hace la empresa; haz clic para abrir su ficha en otra pestaña. "
                "Margen de seguridad: el de tu último análisis guardado.")
+
+
+# ------------------------------------------------------------------ agenda
+DIAS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
+MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def _f(d) -> str:
+    return f"{DIAS[d.weekday()]} {d.day} {MESES[d.month - 1]}"
+
+
+def _seguidas(d: dict, gu: dict) -> list[str]:
+    """Empresas de tus listas (menos «Descartadas») y las que tienes analizadas."""
+    ts = [t for t, e in d["empresas"].items() if [g for g in e.get("listas", []) if not g.startswith("Descartada")]]
+    return list(dict.fromkeys(ts + [t for t in gu if not t.startswith("_")]))
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _fechas(items: tuple, conf_stamp: str) -> list[dict]:
+    from terminal import agenda
+    return agenda.proximas(dict(items))
+
+
+def _agenda(d: dict, gu: dict, idx: pd.DataFrame):
+    from terminal import agenda
+    ts = _seguidas(d, gu)
+    if not ts:
+        return
+    nombre = lambda t: (str(idx.loc[t, "Empresa"]) if t in idx.index and pd.notna(idx.loc[t, "Empresa"]) else t)  # noqa: E731
+    cik = lambda t: (int(idx.loc[t, "CIK"]) if t in idx.index and pd.notna(idx.loc[t, "CIK"]) else 0)  # noqa: E731
+    cal, nt = st.columns([1, 1.45], gap="large")
+
+    with cal:
+        st.markdown("### 📅 Próximos resultados")
+        conf = agenda.confirmadas()
+        stamp = str(sorted((k, str(v.get("fecha"))) for k, v in conf.items()))
+        try:
+            fechas = _fechas(tuple((t, cik(t)) for t in ts), stamp)
+        except Exception:  # noqa: BLE001
+            fechas = []
+        with st.container(height=430, border=True):
+            if not fechas:
+                st.caption("Sin fechas en los próximos meses para tus empresas.")
+            hoy = pd.Timestamp.today().date()
+            grupos = [("Esta semana", 6), ("Próxima semana", 13), ("Este mes", 31), ("Más adelante", 10_000)]
+            html_out, prev = [], -1
+            for g, lim in grupos:
+                sub = [r for r in fechas if prev < r["dias"] <= lim]
+                prev = lim
+                if not sub:
+                    continue
+                html_out.append(f"<div class='ag-grupo'>{g} · {len(sub)}</div>")
+                for r in sub:
+                    tag = {"confirmada": "<span class='ag-tag ag-ok'>✓ confirmada</span>",
+                           "Yahoo Finance": "<span class='ag-tag ag-y'>Yahoo</span>"}.get(r["origen"], "<span class='ag-tag ag-est'>estimada</span>")
+                    falta = "hoy" if r["dias"] == 0 else ("mañana" if r["dias"] == 1 else f"en {r['dias']} días")
+                    ev = html.escape(r.get("evento") or "Resultados") + (f" · {html.escape(r['hora'])}" if r.get("hora") else "")
+                    if r.get("fuente"):
+                        ev = f"<a href='{html.escape(r['fuente'], quote=True)}' target='_blank' style='color:inherit'>{ev}</a>"
+                    html_out.append(
+                        f"<div class='ag-row'><div class='ag-fecha'>{_f(r['fecha'])}<span class='ag-dias'>{falta}</span></div>"
+                        f"<div><span class='ag-emp'><a href='{_url(r['ticker'])}' target='_blank'>{html.escape(nombre(r['ticker']))}</a></span>"
+                        f"{tag}<div class='ag-ev'>{r['ticker']} · {ev}</div></div></div>")
+            st.markdown("".join(html_out), unsafe_allow_html=True)
+            sin = [t for t in ts if t not in {r["ticker"] for r in fechas}]
+            if sin:
+                st.caption("Sin fecha conocida: " + ", ".join(sin))
+        st.caption("✓ confirmada por la empresa (la anota la tarea de noticias) · Yahoo: calendario de Yahoo Finance · "
+                   "estimada: misma semana que el año anterior.")
+
+    with nt:
+        st.markdown("### 📰 Noticias de tus empresas")
+        n = agenda.noticias()
+        items = [x for x in (n.get("items") or []) if x.get("titular")]
+        c1, c2 = st.columns([1, 1.6])
+        periodo = c1.segmented_control("Periodo", ["Hoy", "7 días", "30 días"], default="7 días", key="nt_periodo",
+                                       label_visibility="collapsed") or "7 días"
+        lim = {"Hoy": 0, "7 días": 7, "30 días": 30}[periodo]
+        hoy = pd.Timestamp.today().normalize()
+        items = [x for x in items if (hoy - pd.Timestamp(str(x.get("fecha", ""))[:10])).days <= lim] if items else []
+        con = sorted({x.get("ticker") for x in items if x.get("ticker")})
+        emp = c2.multiselect("Empresas", con, key="nt_emp", placeholder="Todas las empresas", label_visibility="collapsed",
+                             format_func=lambda t: f"{nombre(t)} ({t})")
+        if emp:
+            items = [x for x in items if x.get("ticker") in emp]
+        items.sort(key=lambda x: (str(x.get("fecha", "")), 1 if x.get("importancia") == "alta" else 0), reverse=True)
+        with st.container(height=386, border=True):
+            if not items:
+                st.caption("Sin noticias en este periodo. Las añade cada mañana la tarea programada de noticias "
+                           "(documento «_NOTICIAS» de tus datos).")
+            out = []
+            for x in items[:80]:
+                t = x.get("ticker") or ""
+                ico = agenda.TIPOS.get(x.get("tipo") or "otro", "📰")
+                fd = pd.Timestamp(str(x.get("fecha"))[:10]).date()
+                tit = html.escape(x.get("titular", ""))
+                tit = (f"<a class='nt-tit' href='{html.escape(x['url'], quote=True)}' target='_blank'>{tit}</a>"
+                       if x.get("url") else f"<span class='nt-tit'>{tit}</span>")
+                meta = f"<span class='nt-tk'>{html.escape(t)}</span>{_f(fd)} · {ico} {html.escape(x.get('tipo') or 'otro')}" + \
+                       (f" · {html.escape(x['fuente'])}" if x.get("fuente") else "")
+                out.append(f"<div class='nt-item{' nt-alta' if x.get('importancia') == 'alta' else ''}'>"
+                           f"<div class='nt-meta'>{meta}</div>{tit}"
+                           + (f"<div class='nt-res'>{html.escape(x['resumen'])}</div>" if x.get("resumen") else "") + "</div>")
+            st.markdown("".join(out), unsafe_allow_html=True)
+        st.caption(("Actualizado: " + n["actualizado"] + " · " if n.get("actualizado") else "")
+                   + "borde naranja = noticia importante para la tesis.")
