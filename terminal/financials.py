@@ -346,6 +346,9 @@ def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
         taxes = g("taxes", y)
         if pretax is None and ni is not None and taxes is not None:
             pretax = ni + taxes
+        elif pretax is not None and ni is not None and taxes is not None and abs(ni + taxes) > 0 \
+                and abs(pretax - (ni + taxes)) > 0.3 * abs(ni + taxes):
+            pretax = ni + taxes  # la etiqueta era solo una parte (p. ej. «…Domestic», el BAI nacional): beneficio + impuestos
         if op is not None and pretax is not None and rev and op < 0 < pretax and (pretax - op) > 0.5 * abs(rev):
             # resultado «no operativo» de más de la mitad de las ventas con pérdidas operativas y beneficio antes de
             # impuestos: la etiqueta del resultado operativo no es comparable (aseguradoras, holdings) → EBIT = BAI
@@ -445,6 +448,19 @@ def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
             put(k, y, None if v is None else v / M)
 
     warnings = _adjust_splits(out, years)
+    # Acciones en otra escala (algunas empresas etiquetan «WeightedAverageNumberOfDilutedSharesOutstanding» ya en
+    # millones o en miles): si no cuadran con beneficio / BPA (más de ×5 de diferencia), mandan beneficio / BPA.
+    arregladas = []
+    for y in years:
+        sh, eps, ni = (out.get("shares_diluted") or {}).get(y), (out.get("eps_diluted") or {}).get(y), (out.get("net_income") or {}).get(y)
+        if eps and ni and abs(eps) >= 0.05 and ni / eps > 0:
+            imp = ni / eps
+            if not sh or sh <= 0 or not (0.2 <= sh / imp <= 5):
+                out.setdefault("shares_diluted", {})[y] = imp
+                if sh:
+                    arregladas.append(y)
+    if arregladas:
+        warnings.append(f"Acciones diluidas en otra escala en {', '.join(map(str, arregladas))}: calculadas como beneficio / BPA.")
     # Ruptura de escala en las ventas (×50 o más de un año a otro): casi siempre es una etiqueta XBRL distinta o en otra
     # unidad en los primeros informes (p. ej. aseguradoras que pasan a NIIF 17). Se descartan los años anteriores.
     rv = [(out.get("revenue") or {}).get(y) for y in years]

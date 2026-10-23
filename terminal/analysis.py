@@ -440,6 +440,9 @@ def project(f: Financials, stats: dict, sc: dict, params: InvestorParams) -> pd.
         d["Variación de caja"] = d["Flujo de caja libre"] + d["Recompra de acciones"] + d["Dividendos pagados"] + d["Variación de deuda"]
         if d["Precio supuesto para las recompras"] > 0:
             d["Acciones diluidas (M)"] = p["Acciones diluidas (M)"] + (d["Remuneración en acciones"] + d["Recompra de acciones"]) / d["Precio supuesto para las recompras"]
+            # tope: como mucho un 10 % menos de acciones al año (con un BPA casi nulo el precio supuesto tiende a cero y
+            # las recompras comprarían la empresa entera)
+            d["Acciones diluidas (M)"] = max(d["Acciones diluidas (M)"], 0.9 * p["Acciones diluidas (M)"])
         else:
             d["Acciones diluidas (M)"] = p["Acciones diluidas (M)"]
         d["BPA diluido"] = _div(d["Beneficio neto"], d["Acciones diluidas (M)"], 0.0)
