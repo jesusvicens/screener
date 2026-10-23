@@ -235,9 +235,25 @@ def build(ticker: str, data: dict, name: str | None = None) -> bytes:
             links = [x for x in (q.get("nota_prensa"), q.get("transcripcion_url")) if x]
             if links:
                 _note(doc, " · ".join(links))
-    if data.get("comparables"):
+    ca = data.get("comparables_analisis") or {}
+    if data.get("comparables") or ca:
         doc.add_heading("Comparables", level=1)
-        doc.add_paragraph(", ".join(data["comparables"]))
+        if ca.get("intro"):
+            add_markdown(doc, ca["intro"])
+        if ca.get("tabla"):
+            cols = list(ca["tabla"][0].keys())
+            _table(doc, [cols] + [[("—" if r.get(c) is None else (f"{r[c] * 100:.1f} %".replace(".", ",") if isinstance(r.get(c), float) and abs(r[c]) < 3 and c in ca.get("columnas_pct", []) else str(r[c]))) for c in cols] for r in ca["tabla"]])
+            if ca.get("nota_tabla"):
+                _note(doc, ca["nota_tabla"])
+        for sec in ca.get("secciones", []):
+            doc.add_heading(sec.get("titulo", ""), level=2)
+            add_markdown(doc, sec.get("md", ""), base_level=3)
+        if data.get("comparables"):
+            _note(doc, "Comparables de la tabla automática: " + ", ".join(data["comparables"]))
+        if ca.get("fuentes"):
+            doc.add_heading("Fuentes de los comparables", level=2)
+            for f in ca["fuentes"]:
+                _runs(doc.add_paragraph(style="List Bullet"), f"[{f['titulo']}]({f['url']})")
     bio = io.BytesIO()
     doc.save(bio)
     return bio.getvalue()

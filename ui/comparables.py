@@ -24,9 +24,72 @@ def _save(T: str, peers: list[str]):
         st.error(f"No se han podido guardar: {e}")
 
 
+PCT_FMT = lambda v: "—" if v is None or v != v else f"{v * 100:+.1f} %".replace(".", ",")  # noqa: E731
+
+
+def _analisis(T: str, data: dict):
+    """Análisis de comparables escrito (con cifras de los informes de cada empresa) si lo hay para esta empresa."""
+    import pandas as pd
+    a = data.get("comparables_analisis") or {}
+    if not a:
+        return
+    st.markdown("## Frente a sus competidores")
+    st.caption(f"Análisis con las cifras publicadas por cada empresa · actualizado el {a.get('fecha', '—')}. "
+               "Abajo, la comparación automática con los datos del screener.")
+    if a.get("intro"):
+        st.markdown(a["intro"])
+    tb = pd.DataFrame(a.get("tabla") or [])
+    if not tb.empty:
+        pcts = set(a.get("columnas_pct", []))
+        show = tb.copy()
+        for c in show.columns:
+            if c in pcts:
+                show[c] = [("—" if v is None or v != v else (f"{v * 100:.1f} %".replace(".", ",") if "argen" in c else PCT_FMT(v)))
+                           for v in show[c]]
+            elif show[c].dtype.kind in "fi":
+                show[c] = [("—" if v != v else (f"{v:,.0f}".replace(",", ".") if abs(v) >= 100 else f"{v:.1f}".replace(".", ",")))
+                           for v in show[c]]
+        st.dataframe(show.set_index(show.columns[0]), width="stretch", height=38 + 35 * len(show))
+        if a.get("nota_tabla"):
+            st.caption(a["nota_tabla"])
+        # gráficos: margen operativo, crecimiento del último año y del 2026, y PER
+        graf = [g for g in a.get("graficos", []) if g in tb.columns]
+        for i in range(0, len(graf), 2):
+            cc = st.columns(2)
+            for j, m in enumerate(graf[i:i + 2]):
+                body = tb[[tb.columns[0], m]].dropna()
+                body = body.sort_values(m)
+                if body.empty:
+                    continue
+                is_pct = m in pcts
+                lab = list(body[tb.columns[0]])
+                colors = [BLUE if T.split(".")[0].upper() in str(x).upper() or str(x).startswith("Hermès") else GRAY for x in lab]
+                txt = [(f"{v * 100:.1f} %".replace(".", ",") if is_pct else f"{v:.1f}x".replace(".", ",")) for v in body[m]]
+                fig = go.Figure(go.Bar(x=body[m], y=lab, orientation="h", marker_color=colors, text=txt, textposition="outside",
+                                       cliponaxis=False, textfont=dict(size=11), hovertemplate="%{y}: %{text}<extra></extra>"))
+                if is_pct:
+                    fig.update_xaxes(tickformat=".0%")
+                fig.update_layout(showlegend=False, hovermode="closest")
+                fig_layout(fig, m, h=60 + 30 * len(body), unit="%" if is_pct else "veces")
+                fig.update_layout(yaxis=dict(type="category"), xaxis=dict(type="linear"))
+                cc[j].plotly_chart(fig, width="stretch", key=f"cmpa_{T}_{m}")
+    for sec in a.get("secciones", []):
+        with st.expander(sec.get("titulo", ""), expanded=sec.get("abierto", False)):
+            st.markdown(sec.get("md", ""))
+    if a.get("fuentes"):
+        with st.expander("Fuentes"):
+            st.markdown("\n".join(f"- [{f['titulo']}]({f['url']})" for f in a["fuentes"]))
+    st.divider()
+    st.markdown("## Comparación automática (datos del screener)")
+
+
 def tab(T: str, ca):
     from ui.ayuda import explica
     explica("comparables")
+    try:
+        _analisis(T, storage.load(T) or {})
+    except Exception as e:  # noqa: BLE001
+        st.caption(f"No se ha podido mostrar el análisis de comparables: {e}")
     df = universo.table()
     if df is None:
         st.info("Faltan los datos del screener (se preparan cada noche). Abre el Screener una vez y vuelve aquí.")
