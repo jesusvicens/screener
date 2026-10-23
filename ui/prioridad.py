@@ -141,9 +141,12 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
         top = cand.iloc[0]
         st.markdown(f"**La primera, {top['Ticker']}** ({top['Empresa']}): {top['Prioridad']:.2f} puntos = "
                     f"{top['Puntos por nota']:.2f} por nota + {top['Puntos por precio']:.2f} por precio. {top['Motivo']}.")
-    cols = ["Empresa", "Prioridad", "Puntos por nota", "Puntos por precio", "Motivo", "Nota financiera", "Nota PyG", "Nota Balance",
+    cols = ["Empresa", "Negocio", "Prioridad", "Puntos por nota", "Puntos por precio", "Motivo", "Nota financiera", "Nota PyG", "Nota Balance",
             "Nota Cash Flow", "Nota Asignación de capital", "Sector", "Capitalización (M$)", "PER", "Rent. FCF", "Crec. medio BPA",
             "CAGR ventas 5a", "ROE medio 5a"]
+    from terminal import descripciones
+    cand = cand.copy()
+    cand["Negocio"] = [descripciones.para(t, gu) for t in cand["Ticker"]]
     out = cand.head(200)[["Ticker"] + [c for c in cols if c in cand]].set_index("Ticker")
     out = out.rename(columns={"Crec. medio BPA": "Crec. medio BPA 5a"})
     out["Empresa"] = [company_url(t, n) for t, n in zip(out.index, out["Empresa"])]
@@ -152,6 +155,7 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
     show_cols_table(out, height=560, kinds={k: v for k, v in kinds.items() if k in out.columns},
                     column_config={"Empresa": st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$",
                                                                           help="Abre la ficha en una pestaña nueva"),
+                                   "Negocio": st.column_config.TextColumn("Negocio", width="large", help="Qué hace la empresa: tu «En una frase» si tienes dossier; si no, el resumen de su actividad (Yahoo Finance/Nasdaq, en inglés). Pasa el ratón para leerlo entero."),
                                    "Motivo": st.column_config.TextColumn("Motivo", width="large",
                                                                          help="Por qué está en esta posición")})
     if len(cand) > 200:

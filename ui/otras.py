@@ -172,18 +172,26 @@ def _screener_body():
     df = screener.with_avg_growth(df, navg)
     res = screener.apply_filters(df, filters, exch, text, sectors, industries)
     st.markdown(f"## Resultado · {num(len(res))} empresas")
-    core = ["Empresa", "Sector", "Precio", "Capitalización (M$)", "PER", "Nota financiera"]
+    core = ["Empresa", "Negocio", "Sector", "Precio", "Capitalización (M$)", "PER", "Nota financiera"]
     default_cols = core + [m for m in mets if m not in core]
     for extra in ("CAGR ventas 5a", "CAGR BPA 5a", "ROE", "Margen operativo"):
         if extra not in default_cols and len(default_cols) < 12:
             default_cols.append(extra)
-    allcols = ["Empresa", "Mercado", "Sector", "Industria", "País", "BPA"] + [m for m, *_ in screener.METRICS]
+    allcols = ["Empresa", "Negocio", "Mercado", "Sector", "Industria", "País", "BPA"] + [m for m, *_ in screener.METRICS]
     oc = st.columns([3, 1.3, 0.8])
     cols = oc[0].multiselect("Columnas", allcols, default=default_cols, key="scr_cols")
     cols = cols + [m for m in mets if m not in cols]  # las métricas por las que filtras siempre se ven
-    sort_opts = [c for c in cols if c not in ("Empresa", "Mercado", "Sector", "Industria", "País")] or ["Ventas (M$)"]
+    sort_opts = [c for c in cols if c not in ("Empresa", "Negocio", "Mercado", "Sector", "Industria", "País")] or ["Ventas (M$)"]
     sort_by = oc[1].selectbox("Ordenar por", sort_opts, index=sort_opts.index("CAGR BPA 5a") if "CAGR BPA 5a" in sort_opts else 0)
     asc = oc[2].toggle("Ascendente", False)
+    res = res.copy()
+    if "Negocio" in cols:
+        from terminal import descripciones
+        from ui.prioridad import _guardados
+        gu = _guardados()
+        top = res.sort_values(sort_by, ascending=asc, na_position="last").head(1000)
+        res["Negocio"] = None
+        res.loc[top.index, "Negocio"] = [descripciones.para(t, gu) for t in top["Ticker"]]
     out = res.sort_values(sort_by, ascending=asc, na_position="last")[["Ticker"] + cols].head(1000).set_index("Ticker")
     ren = {m: f"{m} {navg.get(m, screener.AVG_DEFAULT)}a" for m in screener.AVG_GROWTH if m in out.columns}
     out = out.rename(columns=ren)
@@ -192,6 +200,9 @@ def _screener_body():
     kinds.update({"BPA": "ps", "Precio": "ps", "Años caída ventas": "int", "Años caída BPA": "int", "Años con pérdidas": "int",
                   "Preguntas no aplicables": "int"})
     ccfg = {}
+    if "Negocio" in out.columns:
+        out["Negocio"] = out["Negocio"].fillna("")
+        ccfg["Negocio"] = st.column_config.TextColumn("Negocio", width="large", help="Qué hace la empresa: tu «En una frase» si tienes dossier; si no, el resumen de su actividad (Yahoo Finance/Nasdaq, en inglés). Pasa el ratón para leerlo entero.")
     if "Empresa" in out.columns:
         out["Empresa"] = [company_url(t, n) for t, n in zip(out.index, out["Empresa"])]
         ccfg["Empresa"] = st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$",

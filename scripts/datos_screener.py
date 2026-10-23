@@ -7,7 +7,6 @@ Escribe en --out: screener_market.parquet, screener_base.parquet, superinversore
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import sys
 from datetime import datetime, timezone
@@ -16,13 +15,14 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from terminal import remoto, screener, superinversores  # noqa: E402
+from terminal import descripciones, remoto, screener, superinversores  # noqa: E402
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="out")
     ap.add_argument("--forzar", action="store_true", help="Recalcula los fundamentales aunque sean recientes")
+    ap.add_argument("--minutos-desc", dest="minutos_desc", type=float, default=18, help="Tiempo para descargar descripciones")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -69,6 +69,32 @@ def main():
             raw = remoto.public_file("superinversores.parquet")
             if raw:
                 (out / "superinversores.parquet").write_bytes(raw)
+    # Descripción del negocio (Yahoo/Nasdaq): poco a poco, primero las más grandes; se renuevan cada seis meses.
+    try:
+        import gzip
+        raw = remoto.public_file(descripciones.FILE, timeout=120)
+        prev_d = json.loads(gzip.decompress(raw)) if raw else {}
+        orden = []
+        try:
+            b = pd.read_parquet(out / "screener_base.parquet")
+            mkp = pd.read_parquet(out / "screener_market.parquet") if (out / "screener_market.parquet").exists() else None
+            v = screener.with_valuation(b, mkp)
+            orden = list(v.sort_values("Capitalización (M$)", ascending=False, na_position="last")["Ticker"].astype(str))
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠ orden de descripciones: {e}")
+        try:
+            eu = json.loads(remoto.public_file("europa_universo.json", branch=remoto.EUROPA_BRANCH) or b"[]")
+            orden += [x["ticker"] for x in eu]
+        except Exception:  # noqa: BLE001
+            pass
+        dd = descripciones.actualizar(prev_d, list(dict.fromkeys(orden)), minutos=a.minutos_desc)
+        (out / descripciones.FILE).write_bytes(gzip.compress(json.dumps(dd, ensure_ascii=False).encode("utf-8")))
+        meta["descripciones"] = now
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠ Descripciones: {e}")
+        raw = remoto.public_file(descripciones.FILE, timeout=120)
+        if raw:
+            (out / descripciones.FILE).write_bytes(raw)
     (out / "meta.json").write_text(json.dumps(meta, indent=1))
     print(meta)
 

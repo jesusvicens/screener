@@ -35,6 +35,8 @@ h3 {{ font-size: 1rem !important; font-weight: 600 !important; color: {TEXT} !im
 [data-testid="stDataFrame"] {{ border: 1px solid {GRID}; border-radius: 2px; }}
 .tick {{ font-family: 'Roboto Mono', monospace; background: {BLUE}; color: #fff; padding: .08rem .5rem; border-radius: 3px; font-weight: 500; margin-right: .6rem; font-size: 1.2rem; }}
 .subtle {{ color: {MUTED}; font-size: .88rem; }}
+.que-hace {{ margin:.55rem 0 .2rem; padding:.55rem .8rem; border-left:3px solid #2f6db5; background:#f6f8fb; border-radius:4px;
+  font-size:.92rem; line-height:1.4; color:#1f2937; }}
 .pill {{ display:inline-block; font-size:.78rem; padding:.1rem .5rem; border-radius:3px; border:1px solid {GRID}; background:{HEAD}; color:{MUTED}; margin-right:.4rem; }}
 .pill.ok {{ color:{GREEN}; border-color:{GREEN}; background:#eef8f2; }} .pill.ko {{ color:{RED}; border-color:{RED}; background:#fdf0ee; }}
 .pill.am {{ color:{BLUE}; border-color:{BLUE}; background:#eef4fb; }}

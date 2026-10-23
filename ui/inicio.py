@@ -51,6 +51,7 @@ def _css():
     a.ini-emp { font-weight: 650; color: #1f2937; text-decoration: none; font-size: 1rem; }
     a.ini-emp:hover { color: #1a5fb4; text-decoration: underline; }
     .ini-sub { color: #6b7280; font-size: .78rem; }
+    .ini-desc { color: #4b5563; font-size: .8rem; line-height: 1.25; margin-top: .1rem; }
     .ini-num { text-align: right; font-variant-numeric: tabular-nums; padding-top: .35rem; }
     .ini-head { color: #6b7280; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
     .ini-pos { color: #15803d; } .ini-neg { color: #b91c1c; }
@@ -143,7 +144,8 @@ def page():
     for rec in tab.to_dict("records"):
         r = pd.Series(rec)
         t = r.Ticker
-        desc = (gu.get(t) or {}).get("frase") or ""
+        from terminal import descripciones
+        desc = (gu.get(t) or {}).get("frase") or descripciones.corta(t, 600)
         if not desc and r.CIK is not None and not pd.isna(r.CIK) and int(r.CIK):
             desc = _sec_desc(int(r.CIK))
         if not desc:
@@ -151,7 +153,9 @@ def page():
         sub = " · ".join(x for x in (t, r.Mercado, r.Sector if r.Sector and r.Sector != "—" else "") if x)
         c = st.columns(W, vertical_alignment="center")
         c[0].markdown(f"<a class='ini-emp' href='{_url(t)}' target='_blank' title=\"{html.escape(desc or r.Empresa, quote=True)}\">"
-                      f"{html.escape(str(r.Empresa))}</a><div class='ini-sub'>{html.escape(sub)}</div>", unsafe_allow_html=True)
+                      f"{html.escape(str(r.Empresa))}</a><div class='ini-sub'>{html.escape(sub)}</div>"
+                      + (f"<div class='ini-desc'>{html.escape(descripciones.resumir(desc, 130))}</div>" if desc else ""),
+                      unsafe_allow_html=True)
         precio = "—" if r.Precio is None or pd.isna(r.Precio) else num(r.Precio, 2)
         c[1].markdown(f"<div class='ini-num'>{precio}</div>", unsafe_allow_html=True)
         c[2].markdown(f"<div class='ini-num'>{fmt_cell(r.PER, 'x')}</div>", unsafe_allow_html=True)

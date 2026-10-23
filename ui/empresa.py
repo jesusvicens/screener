@@ -443,8 +443,27 @@ def _header(ca: pipeline.CompanyAnalysis):
         cols[7].metric("Veredicto", v.coverage.get("Veredicto", "—"), f"{pct(rent)} al año", delta_arrow="off",
                        delta_color="normal" if (((rent or 0) >= ca.params.r) == ((rent or 0) >= 0)) else "inverse",
                        help=f"Rentabilidad anual implícita al precio actual. Verde si supera la que exiges ({pct(ca.params.r)}).")
+    _que_hace(ca)
     for w in f.warnings + ((v.warnings if v else [])):
         st.caption(f"⚠ {w}")
+
+
+def _que_hace(ca):
+    """Descripción del negocio: tu «En una frase» del dossier (español) o el resumen de actividad (Yahoo/Nasdaq)."""
+    import re as _re
+    from terminal import descripciones
+    T = ca.fin.ticker
+    dossier = (st.session_state.get(f"saved_{T}") or {}).get("dossier") or ""
+    m = _re.search(r"### En una frase\s*\n+(.+?)(?:\n\s*\n|\n###|$)", dossier, _re.S)
+    frase = m.group(1).strip() if m else ""
+    larga = descripciones.larga(T)
+    if not frase and not larga:
+        return
+    st.markdown(f"<div class='que-hace'><b>Qué hace:</b> {(frase or descripciones.resumir(larga, 400)).replace('$', '&#36;')}</div>",
+                unsafe_allow_html=True)
+    if larga:
+        with st.expander("Descripción completa de la actividad (en inglés, Yahoo Finance)"):
+            st.markdown(larga.replace("$", "\\$"))
 
 
 def _save_bar(T, work, ca):
