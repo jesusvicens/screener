@@ -38,15 +38,20 @@ def download(dest: Path) -> Path:
     return dest
 
 
-def nasdaq_prices() -> dict[str, float]:
-    """Último precio de todas las acciones de EE. UU. (una llamada al screener público de Nasdaq)."""
+def nasdaq_prices() -> dict[str, tuple[float, float | None]]:
+    """(último precio, acciones en millones) de todas las acciones de EE. UU. (una llamada al screener público de Nasdaq)."""
     try:
         r = requests.get("https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=25&offset=0&download=true",
                          headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"}, timeout=60)
         out = {}
         for x in r.json()["data"]["rows"]:
             try:
-                out[x["symbol"].strip().replace("/", "-").replace("^", "-P")] = float(str(x.get("lastsale")).replace("$", "").replace(",", ""))
+                p = float(str(x.get("lastsale")).replace("$", "").replace(",", ""))
+                try:
+                    sh = float(str(x.get("marketCap")).replace(",", "")) / p / 1e6
+                except (TypeError, ValueError, ZeroDivisionError):
+                    sh = None
+                out[x["symbol"].strip().replace("/", "-").replace("^", "-P")] = (p, sh or None)
             except (TypeError, ValueError):
                 pass
         return out
@@ -54,7 +59,7 @@ def nasdaq_prices() -> dict[str, float]:
         return {}
 
 
-def score_company(facts: dict, ticker: str, price: float | None = None) -> dict | None:
+def score_company(facts: dict, ticker: str, price: float | None = None, acciones: float | None = None) -> dict | None:
     fin = F.build(facts, ticker, n_years=10)
     if len(fin.years) < 4 or fin.get("revenue", fin.years[-1]) is None:
         return None
@@ -71,7 +76,7 @@ def score_company(facts: dict, ticker: str, price: float | None = None) -> dict 
            "Fase": stats.get("phase"), "Último ejercicio": fin.years[-1]}
     for qid, (pts, _why) in sug.items():
         row[qid] = pts
-    row.update(modelo_std.valores_futuros(fin, price) or {})  # proyección estándar (4 escenarios) → cobertura y margen
+    row.update(modelo_std.valores_futuros(fin, price, acciones) or {})  # proyección estándar (4 escenarios) → cobertura y margen
     return row
 
 
@@ -98,7 +103,7 @@ def main(zip_path: str | None = None):
                 continue
             try:
                 facts = json.loads(z.read(name))
-                r = score_company(facts, tk, px.get(tk))
+                r = score_company(facts, tk, *(px.get(tk) or (None, None)))
                 if r:
                     r["CIK"] = cik
                     rows.append(r)

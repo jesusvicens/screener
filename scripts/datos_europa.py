@@ -422,7 +422,7 @@ def main():
     vfs = []
     for r, m in zip(rows, mk):
         p = m["Precio"] * m["_fx_q"] / m["_fx_r"] if (m["Precio"] and m["_fx_q"] and m["_fx_r"]) else None
-        vfs.append(modelo_std.valores_futuros(fins[r["Ticker"]], p) or {})
+        vfs.append(modelo_std.valores_futuros(fins[r["Ticker"]], p, r.get("Acciones (M)")) or {})
     for c in modelo_std.COLS:
         base[c] = [v.get(c) for v in vfs]
     log(f"Proyección estándar: {sum(1 for v in vfs if v):,} empresas")

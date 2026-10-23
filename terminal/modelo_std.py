@@ -23,11 +23,23 @@ COLS = [f"_vf_{k}" for k in ESC] + [f"_p_{k}" for k in ESC]
 OUT = ["Cobertura", "Margen de seguridad", "Valor estimado", "Rentab. implícita", "Prob. no compensar"]
 
 
-def valores_futuros(fin, price: float | None = None) -> dict | None:
-    """{_vf_Optimista: …, _p_Optimista: …, …} en la divisa del informe, o None si no se puede proyectar."""
+def valores_futuros(fin, price: float | None = None, acciones: float | None = None) -> dict | None:
+    """{_vf_Optimista: …, _p_Optimista: …, …} en la divisa del informe, o None si no se puede proyectar.
+
+    `acciones` (millones): para las que no etiquetan BPA ni nº de acciones (p. ej. varias clases, como Visa), el BPA
+    se calcula con las acciones actuales, igual que hace la ficha con «acciones a mano»."""
     try:
         L = fin.years[-1]
         eps = fin.get("eps_diluted", L)
+        if eps is None and acciones and fin.get("net_income", L) is not None:
+            import copy
+            fin = copy.deepcopy(fin)
+            for y in fin.years:
+                ni = fin.get("net_income", y)
+                if fin.get("eps_diluted", y) is None and ni is not None:
+                    fin.data.setdefault("shares_diluted", {})[y] = acciones
+                    fin.data.setdefault("eps_diluted", {})[y] = ni / acciones
+            eps = fin.get("eps_diluted", L)
         if len(fin.years) < 4 or eps is None or not fin.get("revenue", L):
             return None
         stats = A.history_stats(fin)
