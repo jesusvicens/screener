@@ -24,6 +24,7 @@ def _save(T: str, peers: list[str]):
         st.error(f"No se han podido guardar: {e}")
 
 
+_md = lambda t: (t or "").replace("$", "\\$")  # noqa: E731  (que «M$» no se lea como fórmula)
 PCT_FMT = lambda v: "—" if v is None or v != v else f"{v * 100:+.1f} %".replace(".", ",")  # noqa: E731
 
 
@@ -37,7 +38,7 @@ def _analisis(T: str, data: dict):
     st.caption(f"Análisis con las cifras publicadas por cada empresa · actualizado el {a.get('fecha', '—')}. "
                "Abajo, la comparación automática con los datos del screener.")
     if a.get("intro"):
-        st.markdown(a["intro"])
+        st.markdown(_md(a["intro"]))
     tb = pd.DataFrame(a.get("tabla") or [])
     if not tb.empty:
         pcts = set(a.get("columnas_pct", []))
@@ -51,7 +52,7 @@ def _analisis(T: str, data: dict):
                            for v in show[c]]
         st.dataframe(show.set_index(show.columns[0]), width="stretch", height=38 + 35 * len(show))
         if a.get("nota_tabla"):
-            st.caption(a["nota_tabla"])
+            st.caption(_md(a["nota_tabla"]))
         # gráficos: margen operativo, crecimiento del último año y del 2026, y PER
         graf = [g for g in a.get("graficos", []) if g in tb.columns]
         for i in range(0, len(graf), 2):
@@ -75,7 +76,7 @@ def _analisis(T: str, data: dict):
                 cc[j].plotly_chart(fig, width="stretch", key=f"cmpa_{T}_{m}")
     for sec in a.get("secciones", []):
         with st.expander(sec.get("titulo", ""), expanded=sec.get("abierto", False)):
-            st.markdown(sec.get("md", ""))
+            st.markdown(_md(sec.get("md", "")))
     if a.get("fuentes"):
         with st.expander("Fuentes"):
             st.markdown("\n".join(f"- [{f['titulo']}]({f['url']})" for f in a["fuentes"]))
