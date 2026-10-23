@@ -40,8 +40,8 @@ def valores_futuros(fin, price: float | None = None, acciones: float | None = No
                     fin.data.setdefault("shares_diluted", {})[y] = acciones
                     fin.data.setdefault("eps_diluted", {})[y] = ni / acciones
             eps = fin.get("eps_diluted", L)
-        if len(fin.years) < 4 or eps is None or not fin.get("revenue", L):
-            return None
+        if len(fin.years) < 4 or eps is None or not fin.get("revenue", L) or fin.get("operating_income", L) is None:
+            return None  # sin resultado operativo (bancos y muchas aseguradoras) la proyección por márgenes no sirve
         stats = A.history_stats(fin)
         params = A.InvestorParams(price=price if price and price > 0 else None, r=R, n=N, mos=MOS)
         sc = A.propose_scenarios(stats, params, stats["phase"])

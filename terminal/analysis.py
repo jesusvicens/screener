@@ -278,11 +278,14 @@ def exit_per(g10: float, r: float, roe5: float | None) -> float:
 
 def propose_scenarios(stats: dict, params: InvestorParams, phase: str) -> dict[str, dict]:
     i = PHASES.index(phase) if phase in PHASES else 1
-    g3 = stats.get("g3") or 0.0
-    g9 = stats.get("g9") or 0.0
+    # Topes de cordura: ningún escenario propuesto parte de crecimientos de más del 30 % anual (ni menos del −30 %) ni de
+    # márgenes imposibles (bruto entre 0 y 100 %; operativo entre −50 % y el bruto). Tus supuestos escritos a mano no se tocan.
+    clip = lambda x, lo, hi: min(max(x, lo), hi)  # noqa: E731
+    g3 = clip(stats.get("g3") or 0.0, -0.30, 0.30)
+    g9 = clip(stats.get("g9") or 0.0, -0.30, 0.30)
     glt = params.g_lt
-    gl, g5m, g10m, gmin, gmax = (stats.get(k) or 0.0 for k in ("gm_last", "gm5", "gm10", "gm_min", "gm_max"))
-    ol, o5, o10, omin, omax = (stats.get(k) or 0.0 for k in ("om_last", "om5", "om10", "om_min", "om_max"))
+    gl, g5m, g10m, gmin, gmax = (clip(stats.get(k) or 0.0, 0.0, 1.0) for k in ("gm_last", "gm5", "gm10", "gm_min", "gm_max"))
+    ol, o5, o10, omin, omax = (clip(stats.get(k) or 0.0, -0.5, 1.0) for k in ("om_last", "om5", "om10", "om_min", "om_max"))
     bb = stats.get("buyback_fcf5") or 0.0
 
     def pick(lst):
@@ -308,6 +311,8 @@ def propose_scenarios(stats: dict, params: InvestorParams, phase: str) -> dict[s
             "buyback": 0.0, "prob": pick([0.1, 0.05, 0.1, 0.15, 0.1, 0.15])},
     }
     for k in sc:
+        sc[k]["gm"] = max(sc[k]["gm"], 0.0)
+        sc[k]["om"] = min(sc[k]["om"], sc[k]["gm"])
         sc[k]["per_exit"] = exit_per(sc[k]["g10"], params.r, stats.get("roe5"))
     return sc
 

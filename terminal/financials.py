@@ -346,6 +346,12 @@ def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
         taxes = g("taxes", y)
         if pretax is None and ni is not None and taxes is not None:
             pretax = ni + taxes
+        if op is not None and pretax is not None and rev and op < 0 < pretax and (pretax - op) > 0.5 * abs(rev):
+            # resultado «no operativo» de más de la mitad de las ventas con pérdidas operativas y beneficio antes de
+            # impuestos: la etiqueta del resultado operativo no es comparable (aseguradoras, holdings) → EBIT = BAI
+            op = pretax
+            if gp is not None:
+                opex = gp - op
         nonop = g("nonop", y)
         if pretax is not None and op is not None:
             nonop = pretax - op  # así cuadra siempre EBIT + no operativo = BAI
@@ -439,6 +445,19 @@ def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
             put(k, y, None if v is None else v / M)
 
     warnings = _adjust_splits(out, years)
+    # Ruptura de escala en las ventas (×50 o más de un año a otro): casi siempre es una etiqueta XBRL distinta o en otra
+    # unidad en los primeros informes (p. ej. aseguradoras que pasan a NIIF 17). Se descartan los años anteriores.
+    rv = [(out.get("revenue") or {}).get(y) for y in years]
+    cut = None
+    for i in range(len(years) - 1):
+        a, b = rv[i], rv[i + 1]
+        if a and b and a > 0 and b > 0 and (b / a >= 50 or a / b >= 50):
+            cut = i
+    if cut is not None and len(years) - cut - 1 >= 3:
+        quitados = years[:cut + 1]
+        years = years[cut + 1:]
+        warnings.append(f"Las ventas cambian de escala de golpe entre {quitados[-1]} y {years[0]} (×{max(rv[cut + 1] / rv[cut], rv[cut] / rv[cut + 1]):,.0f}): "
+                        f"descarto {', '.join(map(str, quitados))} por datos no comparables.")
     if not has_usgaap and any(raw.get("_lease_pay", {}).get(y) for y in years):
         warnings.append("NIIF 16: el flujo de caja libre ya resta el pago de arrendamientos, para que sea comparable con US GAAP.")
     for k in ("revenue", "net_income", "operating_income", "equity", "ocf", "eps_diluted", "shares_diluted"):
