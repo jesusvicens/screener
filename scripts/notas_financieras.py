@@ -22,7 +22,7 @@ import requests
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from terminal import analysis as A, exam as E, financials as F, sec  # noqa: E402
+from terminal import analysis as A, exam as E, financials as F, modelo_std, sec  # noqa: E402
 
 OUT = ROOT / "data" / "notas_financieras.csv.gz"
 URL = "https://www.sec.gov/Archives/edgar/daily-index/xbrl/companyfacts.zip"
@@ -38,7 +38,23 @@ def download(dest: Path) -> Path:
     return dest
 
 
-def score_company(facts: dict, ticker: str) -> dict | None:
+def nasdaq_prices() -> dict[str, float]:
+    """Último precio de todas las acciones de EE. UU. (una llamada al screener público de Nasdaq)."""
+    try:
+        r = requests.get("https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=25&offset=0&download=true",
+                         headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"}, timeout=60)
+        out = {}
+        for x in r.json()["data"]["rows"]:
+            try:
+                out[x["symbol"].strip().replace("/", "-").replace("^", "-P")] = float(str(x.get("lastsale")).replace("$", "").replace(",", ""))
+            except (TypeError, ValueError):
+                pass
+        return out
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def score_company(facts: dict, ticker: str, price: float | None = None) -> dict | None:
     fin = F.build(facts, ticker, n_years=10)
     if len(fin.years) < 4 or fin.get("revenue", fin.years[-1]) is None:
         return None
@@ -55,6 +71,7 @@ def score_company(facts: dict, ticker: str) -> dict | None:
            "Fase": stats.get("phase"), "Último ejercicio": fin.years[-1]}
     for qid, (pts, _why) in sug.items():
         row[qid] = pts
+    row.update(modelo_std.valores_futuros(fin, price) or {})  # proyección estándar (4 escenarios) → cobertura y margen
     return row
 
 
@@ -69,6 +86,8 @@ def main(zip_path: str | None = None):
     by_cik: dict[int, str] = {}
     for u in uni:
         by_cik.setdefault(int(u["cik"]), u["ticker"])
+    px = nasdaq_prices()
+    print(f"Precios de Nasdaq: {len(px)}", flush=True)
     rows, errors = [], 0
     with zipfile.ZipFile(zp) as z:
         names = [n for n in z.namelist() if n.startswith("CIK") and n.endswith(".json")]
@@ -79,7 +98,7 @@ def main(zip_path: str | None = None):
                 continue
             try:
                 facts = json.loads(z.read(name))
-                r = score_company(facts, tk)
+                r = score_company(facts, tk, px.get(tk))
                 if r:
                     r["CIK"] = cik
                     rows.append(r)

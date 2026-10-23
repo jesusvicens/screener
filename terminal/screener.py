@@ -85,6 +85,13 @@ METRICS: list[tuple[str, str, str, str]] = [
     ("Rent. beneficio", "Valoración", "pct", "BPA / precio (inversa del PER)"),
     ("Rent. FCF", "Valoración", "pct", "FCF / capitalización"),
     ("Rent. dividendo", "Valoración", "pct", "Dividendos pagados / capitalización"),
+    ("Cobertura", "Valoración", "x", "Test de cobertura con la proyección estándar (4 escenarios propuestos por fase, r = 10 %, "
+     "n = 10 años): oportunidad esperada / riesgo esperado frente al umbral precio × (1+r)^n. Mayor que 1: compensa. "
+     "Sin cola izquierda (ningún escenario por debajo del umbral) cuenta como infinita."),
+    ("Margen de seguridad", "Valoración", "pct", "Con la proyección estándar: 1 − precio / valor estimado hoy (E[VF] / (1+r)^n). "
+     "Positivo: cotiza por debajo del valor estimado. Tu margen exigido por defecto es 15 %."),
+    ("Rentab. implícita", "Valoración", "pct", "Rentabilidad anual que da el valor futuro esperado (proyección estándar) al precio de hoy"),
+    ("Prob. no compensar", "Valoración", "pct", "Probabilidad (suma de escenarios) de no llegar al umbral precio × (1+r)^n"),
 ]
 METRIC_KIND = {m: k for m, _g, k, _d in METRICS}
 METRIC_HELP = {m: d for m, _g, _k, d in METRICS}
@@ -498,18 +505,23 @@ NOTA_COLS = ["Nota financiera", "Nota PyG", "Nota Balance", "Nota Cash Flow", "N
 
 
 def with_notas(df: pd.DataFrame) -> pd.DataFrame:
-    """Añade las notas del examen financiero calculadas para todo el universo (GitHub Action semanal)."""
+    """Añade las notas del examen financiero y la proyección estándar calculadas para todo el universo
+    (GitHub Action semanal) y, con el precio de hoy, la cobertura y el margen de seguridad."""
+    from . import modelo_std
     if not NOTAS_FILE.exists():
         for c in NOTA_COLS:
             if c not in df:
                 df[c] = None
-        return df
-    n = pd.read_csv(NOTAS_FILE, usecols=lambda c: c in NOTA_COLS + ["Ticker", "CIK"])
+        return modelo_std.con_cobertura(df)
+    cols = NOTA_COLS + modelo_std.COLS
+    n = pd.read_csv(NOTAS_FILE, usecols=lambda c: c in cols + ["Ticker", "CIK"])
     n = n.drop_duplicates("CIK").set_index("CIK")
-    for c in NOTA_COLS:
+    for c in cols:
+        if c not in n:
+            continue
         us = df["CIK"].map(n[c]) if c in n else None
         df[c] = us if c not in df else (pd.Series(us, index=df.index).where(pd.to_numeric(df["CIK"], errors="coerce").fillna(0) > 0, df[c]))
-    return df
+    return modelo_std.con_cobertura(df)
 
 
 def notas_age_days() -> float | None:

@@ -8,7 +8,7 @@ import streamlit as st
 
 from terminal import listas, screener, storage
 from ui.ayuda import explica
-from ui.common import company_url, fmt_cell, num, show_cols_table
+from ui.common import alto_filas, company_url, fmt_cell, num, show_cols_table
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -152,7 +152,10 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
     out["Empresa"] = [company_url(t, n) for t, n in zip(out.index, out["Empresa"])]
     kinds = {k: v for k, v in screener.METRIC_KIND.items()}
     kinds.update({"Prioridad": "ps", "Puntos por nota": "ps", "Puntos por precio": "ps", "Crec. medio BPA 5a": "pct"})
-    show_cols_table(out, height=560, kinds={k: v for k, v in kinds.items() if k in out.columns},
+    ah = st.columns([3, 1.2])
+    with ah[1]:
+        rh = alto_filas("rec_alto")
+    show_cols_table(out, height=560, kinds={k: v for k, v in kinds.items() if k in out.columns}, row_height=rh,
                     column_config={"Empresa": st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$",
                                                                           help="Abre la ficha en una pestaña nueva"),
                                    "Negocio": st.column_config.TextColumn("Negocio", width="large", help="Qué hace la empresa: tu «En una frase» si tienes dossier; si no, el resumen de su actividad (Yahoo Finance/Nasdaq, en inglés). Pasa el ratón para leerlo entero."),

@@ -351,7 +351,7 @@ def main():
 
     # --- filas del screener + notas
     from notas_financieras import score_company
-    rows, uni = [], []
+    rows, uni, fins = [], [], {}
     for lei, t in tick.items():
         fl = pick3(filings[lei])
         reps = [(f, hechos[f["json_url"]]) for f in fl if f["json_url"] in hechos]
@@ -377,6 +377,7 @@ def main():
         for c in screener.NOTA_COLS:
             row[c] = nota.get(c)
         rows.append(row)
+        fins[t] = fin
         uni.append({k: m[k] for k in ("ticker", "lei", "name", "country", "exchange", "currency", "isin")})
     # Sin nº de acciones en el informe: las de Yahoo (para poder calcular capitalización y BPA).
     sin_acc = [r for r in rows if not r.get("Acciones (M)")]
@@ -415,6 +416,16 @@ def main():
                    "País": esef.COUNTRY_NAMES.get(country.get(r["LEI"]) or "", country.get(r["LEI"]) or "—"),
                    "_fx_q": fx.get(qc), "_fx_r": fx.get(r["Divisa"]), "Divisa cotización": qc})
     mkdf = pd.DataFrame(mk)
+
+    # --- proyección estándar (4 escenarios): valores futuros por acción en la divisa del informe → cobertura y margen
+    from terminal import modelo_std
+    vfs = []
+    for r, m in zip(rows, mk):
+        p = m["Precio"] * m["_fx_q"] / m["_fx_r"] if (m["Precio"] and m["_fx_q"] and m["_fx_r"]) else None
+        vfs.append(modelo_std.valores_futuros(fins[r["Ticker"]], p) or {})
+    for c in modelo_std.COLS:
+        base[c] = [v.get(c) for v in vfs]
+    log(f"Proyección estándar: {sum(1 for v in vfs if v):,} empresas")
 
     # --- salida
     if not base.empty:

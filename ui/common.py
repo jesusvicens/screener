@@ -155,6 +155,8 @@ def fmt_cell(v, kind):
     if not isinstance(v, numbers.Number):
         return "—" if v is None or v is pd.NaT else (v.strftime("%d/%m/%Y") if hasattr(v, "strftime") else str(v))
     v = float(v)
+    if v == float("inf"):
+        return "∞"
     if not ok(v):
         return "—"
     if kind == "int":
@@ -265,7 +267,20 @@ def company_url(ticker: str, name: str = "") -> str:
     return f"./empresa?ticker={ticker}" + (f"&k={k}" if k else "") + f"#{name or ticker}"
 
 
-def show_cols_table(df: pd.DataFrame, height: int | None = None, kinds: dict | None = None, column_config: dict | None = None):
+FILAS = {"1 línea": None, "3 líneas": 78, "6 líneas": 138}
+
+
+def alto_filas(key: str, default: str = "3 líneas") -> int | None:
+    """Selector del alto de las filas: con más de una línea el texto largo (Negocio, Motivo) se parte en varias líneas
+    y se lee entero al estrechar la columna."""
+    v = st.segmented_control("Alto de fila", list(FILAS), default=default, key=key, label_visibility="collapsed",
+                             help="Más líneas por fila para leer la descripción del negocio sin cortar. "
+                                  "También puedes hacer doble clic en una celda para verla entera.")
+    return FILAS.get(v or default)
+
+
+def show_cols_table(df: pd.DataFrame, height: int | None = None, kinds: dict | None = None, column_config: dict | None = None,
+                    row_height: int | None = None):
     """Tabla con columnas = conceptos (formato por columna).
 
     Los valores siguen siendo números (al pulsar el título de una columna se ordena bien) y solo cambia cómo se muestran.
@@ -293,7 +308,9 @@ def show_cols_table(df: pd.DataFrame, height: int | None = None, kinds: dict | N
         sty = sty.format(lambda v, k=k: fmt_cell(v, k), subset=[c], na_rep="—")
         if is_growth(c) and k == "pct":
             sty = sty.map((lambda v: _sign_css(-v) if _isnum(v) else "") if is_inverse(c) else _sign_css, subset=[c])
-    st.dataframe(sty, width="stretch", height=height or min(38 + 35 * len(out), 700), column_config=column_config or None)
+    rh = row_height or 35
+    st.dataframe(sty, width="stretch", height=height or min(38 + rh * len(out), 700), column_config=column_config or None,
+                 row_height=row_height)
 
 
 def kv_table(d: dict):

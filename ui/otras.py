@@ -9,7 +9,7 @@ import streamlit as st
 
 from terminal import pipeline, screener, storage
 from ui.ayuda import explica
-from ui.common import company_url, num, pct, show_cols_table
+from ui.common import alto_filas, company_url, num, pct, show_cols_table
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _screen_table(base_stamp: float, mk_stamp: float, notas_stamp: float = 0.0):
@@ -177,13 +177,18 @@ def _screener_body():
     for extra in ("CAGR ventas 5a", "CAGR BPA 5a", "ROE", "Margen operativo"):
         if extra not in default_cols and len(default_cols) < 12:
             default_cols.append(extra)
-    allcols = ["Empresa", "Negocio", "Mercado", "Sector", "Industria", "País", "BPA"] + [m for m, *_ in screener.METRICS]
-    oc = st.columns([3, 1.3, 0.8])
+    allcols = ["Empresa", "Negocio", "Mercado", "Sector", "Industria", "País", "BPA", "Valor estimado"] + [m for m, *_ in screener.METRICS]
+    for m in ("Cobertura", "Margen de seguridad"):
+        if m in mets and "Valor estimado" not in default_cols:
+            default_cols.append("Valor estimado")
+    oc = st.columns([3, 1.3, 0.8, 1.2])
     cols = oc[0].multiselect("Columnas", allcols, default=default_cols, key="scr_cols")
     cols = cols + [m for m in mets if m not in cols]  # las métricas por las que filtras siempre se ven
     sort_opts = [c for c in cols if c not in ("Empresa", "Negocio", "Mercado", "Sector", "Industria", "País")] or ["Ventas (M$)"]
     sort_by = oc[1].selectbox("Ordenar por", sort_opts, index=sort_opts.index("CAGR BPA 5a") if "CAGR BPA 5a" in sort_opts else 0)
     asc = oc[2].toggle("Ascendente", False)
+    with oc[3]:
+        rh = alto_filas("scr_alto") if "Negocio" in cols else None
     res = res.copy()
     if "Negocio" in cols:
         from terminal import descripciones
@@ -197,7 +202,7 @@ def _screener_body():
     out = out.rename(columns=ren)
     kinds = {m: k for m, k in screener.METRIC_KIND.items()}
     kinds.update({v: "pct" for v in ren.values()})
-    kinds.update({"BPA": "ps", "Precio": "ps", "Años caída ventas": "int", "Años caída BPA": "int", "Años con pérdidas": "int",
+    kinds.update({"BPA": "ps", "Precio": "ps", "Valor estimado": "ps", "Años caída ventas": "int", "Años caída BPA": "int", "Años con pérdidas": "int",
                   "Preguntas no aplicables": "int"})
     ccfg = {}
     if "Negocio" in out.columns:
@@ -207,7 +212,11 @@ def _screener_body():
         out["Empresa"] = [company_url(t, n) for t, n in zip(out.index, out["Empresa"])]
         ccfg["Empresa"] = st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$",
                                                      help="Clic para abrir la ficha en una pestaña nueva")
-    show_cols_table(out, height=700, kinds={k: v for k, v in kinds.items() if k in out.columns}, column_config=ccfg)
+    show_cols_table(out, height=700, kinds={k: v for k, v in kinds.items() if k in out.columns}, column_config=ccfg, row_height=rh)
+    if any(c in out.columns for c in ("Cobertura", "Margen de seguridad", "Valor estimado")):
+        st.caption("Cobertura, margen de seguridad y valor estimado salen de la **proyección estándar** (los 4 escenarios que la ficha "
+                   "propone por fase, r = 10 %, n = 10 años), recalculados con el precio de hoy. Si tienes la empresa analizada con "
+                   "tus supuestos, la ficha manda. Cobertura ∞: ningún escenario queda por debajo del umbral.")
     if len(res) > 1000:
         st.caption("Muestro las 1.000 primeras; afina los filtros o descarga el CSV completo.")
     lb = st.columns([3, 1.4, 1])
