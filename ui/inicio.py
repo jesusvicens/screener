@@ -121,8 +121,14 @@ def page():
         st.info("Aún no tienes empresas en tus listas. Añade la primera con el buscador de arriba.")
         return
 
-    # --- agenda: próximos resultados y noticias
+    # --- agenda: próximos resultados y noticias; tareas y recordatorios
     _agenda(d, gu, idx)
+    try:
+        from ui import tareas
+        nombre = lambda t: (str(idx.loc[t, "Empresa"]) if t in idx.index and pd.notna(idx.loc[t, "Empresa"]) else t)  # noqa: E731
+        tareas.panel_inicio(_seguidas(d, gu) + [t for t in d["empresas"] if t not in _seguidas(d, gu)], nombre, _url)
+    except Exception as e:  # noqa: BLE001
+        st.caption(f"No se han podido cargar las tareas: {e}")
 
     # --- filtro por lista y orden
     cuenta = {g: len(listas.in_list(d, g)) for g in d["grupos"]}
@@ -223,19 +229,35 @@ def _agenda(d: dict, gu: dict, idx: pd.DataFrame):
     cal, nt = st.columns([1, 1.45], gap="large")
 
     with cal:
-        st.markdown("### 📅 Próximos resultados")
+        st.markdown("### 📅 Calendario")
         conf = agenda.confirmadas()
         stamp = str(sorted((k, str(v.get("fecha"))) for k, v in conf.items()))
         try:
-            fechas = _fechas(tuple((t, cik(t)) for t in ts), stamp)
+            fechas = list(_fechas(tuple((t, cik(t)) for t in ts), stamp))
         except Exception:  # noqa: BLE001
             fechas = []
+        # tareas y revisiones con fecha (de Inicio o de la ficha de cada empresa)
+        try:
+            from datetime import date as _date
+            from terminal import tareas as TA
+            from ui.tareas import _items as _ti
+            for x in TA.pendientes(_ti()):
+                if not x.get("fecha"):
+                    continue
+                fd = _date.fromisoformat(x["fecha"])
+                dd = (fd - _date.today()).days
+                if dd <= 400:
+                    fechas.append({"ticker": x.get("ticker") or "", "fecha": fd, "dias": dd, "origen": "tarea",
+                                   "evento": f"{TA.TIPOS.get(x.get('tipo'), '✅')} {x['texto']}", "tipo_t": x.get("tipo")})
+            fechas.sort(key=lambda r: (r["fecha"], r["ticker"]))
+        except Exception:  # noqa: BLE001
+            pass
         with st.container(height=430, border=True):
             if not fechas:
                 st.caption("Sin fechas en los próximos meses para tus empresas.")
             hoy = pd.Timestamp.today().date()
-            grupos = [("Esta semana", 6), ("Próxima semana", 13), ("Este mes", 31), ("Más adelante", 10_000)]
-            html_out, prev = [], -1
+            grupos = [("Vencidas", -1), ("Esta semana", 6), ("Próxima semana", 13), ("Este mes", 31), ("Más adelante", 10_000)]
+            html_out, prev = [], -100_000
             for g, lim in grupos:
                 sub = [r for r in fechas if prev < r["dias"] <= lim]
                 prev = lim
@@ -243,6 +265,15 @@ def _agenda(d: dict, gu: dict, idx: pd.DataFrame):
                     continue
                 html_out.append(f"<div class='ag-grupo'>{g} · {len(sub)}</div>")
                 for r in sub:
+                    if r["origen"] == "tarea":
+                        falta = "vencida" if r["dias"] < 0 else ("hoy" if r["dias"] == 0 else ("mañana" if r["dias"] == 1 else f"en {r['dias']} días"))
+                        quien = (f"<span class='ag-emp'><a href='{_url(r['ticker'])}' target='_blank'>{html.escape(nombre(r['ticker']))}</a></span>"
+                                 if r["ticker"] else "<span class='ag-emp'><b>Tarea</b></span>")
+                        html_out.append(
+                            f"<div class='ag-row'><div class='ag-fecha'>{_f(r['fecha'])}<span class='ag-dias'>{falta}</span></div>"
+                            f"<div>{quien}<span class='ag-tag' style='background:#fff4e5;color:#b45309'>{r.get('tipo_t') or 'tarea'}</span>"
+                            f"<div class='ag-ev'>{html.escape(r['evento'])}</div></div></div>")
+                        continue
                     tag = {"confirmada": "<span class='ag-tag ag-ok'>✓ confirmada</span>",
                            "Yahoo Finance": "<span class='ag-tag ag-y'>Yahoo</span>"}.get(r["origen"], "<span class='ag-tag ag-est'>estimada</span>")
                     falta = "hoy" if r["dias"] == 0 else ("mañana" if r["dias"] == 1 else f"en {r['dias']} días")
@@ -254,11 +285,11 @@ def _agenda(d: dict, gu: dict, idx: pd.DataFrame):
                         f"<div><span class='ag-emp'><a href='{_url(r['ticker'])}' target='_blank'>{html.escape(nombre(r['ticker']))}</a></span>"
                         f"{tag}<div class='ag-ev'>{r['ticker']} · {ev}</div></div></div>")
             st.markdown("".join(html_out), unsafe_allow_html=True)
-            sin = [t for t in ts if t not in {r["ticker"] for r in fechas}]
+            sin = [t for t in ts if t not in {r["ticker"] for r in fechas if r["origen"] != "tarea"}]
             if sin:
                 st.caption("Sin fecha conocida: " + ", ".join(sin))
-        st.caption("✓ confirmada por la empresa (la anota la tarea de noticias) · Yahoo: calendario de Yahoo Finance · "
-                   "estimada: misma semana que el año anterior.")
+        st.caption("Resultados: ✓ confirmada por la empresa · Yahoo: calendario de Yahoo Finance · estimada: misma semana que "
+                   "el año anterior. En naranja, tus tareas y revisiones.")
 
     with nt:
         st.markdown("### 📰 Noticias de tus empresas")

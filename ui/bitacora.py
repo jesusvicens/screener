@@ -29,6 +29,11 @@ def _save(T: str, entries: list[dict]) -> bool:
 def tab(T: str, ca):
     from ui.ayuda import explica
     explica("bitacora")
+    try:
+        from ui import tareas
+        tareas.bloque_ficha(T)
+    except Exception as e:  # noqa: BLE001
+        st.caption(f"No se han podido cargar las tareas: {e}")
     st.markdown("## Bitácora")
     st.caption("Apunta con fecha lo que vas pensando: la tesis inicial, qué cambió en cada resultado, por qué compraste o vendiste. "
                "Se guarda al momento (no hace falta «Guardar análisis»).")
