@@ -184,9 +184,8 @@ def _screener_body():
     for m in ("Cobertura", "Margen de seguridad"):
         if m in mets and "Valor estimado" not in default_cols:
             default_cols.append("Valor estimado")
+    cols = _selector_columnas(allcols, default_cols, mets, sp)
     oc = st.columns([3, 1.3, 0.8, 1.2])
-    cols = oc[0].multiselect("Columnas", allcols, default=default_cols, key="scr_cols")
-    cols = cols + [m for m in mets if m not in cols]  # las métricas por las que filtras siempre se ven
     sort_opts = [c for c in cols if c not in ("Empresa", "Negocio", "Mercado", "Sector", "Industria", "País")] or ["Ventas (M$)"]
     sort_by = oc[1].selectbox("Ordenar por", sort_opts, index=sort_opts.index("CAGR BPA 5a") if "CAGR BPA 5a" in sort_opts else 0)
     asc = oc[2].toggle("Ascendente", False)
@@ -242,6 +241,49 @@ def _screener_body():
     st.caption("Datos: frames de la SEC (el ejercicio que mejor encaja con el año natural; saldos al cierre más cercano a diciembre), "
                "BPA y acciones ajustados por splits. Precios, capitalización y sector: screener público de Nasdaq. "
                "Ojo con empresas que reportan en otra divisa (PER y P/V sin sentido) y con bancos/aseguradoras (sin margen bruto).")
+
+
+# ------------------------------------------------------------------ columnas del screener
+def _grupos_columnas() -> dict[str, list[str]]:
+    g: dict[str, list[str]] = {"Empresa": ["Empresa", "Negocio", "Mercado", "Sector", "Industria", "País"]}
+    for m, gr, _k, _d in screener.METRICS:
+        g.setdefault(gr, []).append(m)
+    g["Valoración"] = g.get("Valoración", []) + ["BPA", "Valor estimado"]
+    orden = ["Empresa", "Valoración", "Examen", "Tamaño", "Crecimiento", "Márgenes", "Rentabilidad", "Capital", "Salud", "Consistencia"]
+    return {k: g[k] for k in orden if k in g} | {k: v for k, v in g.items() if k not in orden}
+
+
+def _cols_por_defecto(grupos, default_cols):
+    for gr, opts in grupos.items():
+        st.session_state[f"scr_cg_{gr}"] = [c for c in opts if c in default_cols]
+
+
+def _selector_columnas(allcols, default_cols, mets, sp) -> list[str]:
+    """Columnas visibles: casillas agrupadas por tema (se ven todas a la vez y se quitan con un clic)."""
+    grupos = _grupos_columnas()
+    for gr, opts in grupos.items():
+        k = f"scr_cg_{gr}"
+        if k not in st.session_state:
+            st.session_state[k] = sp.get(k, [c for c in opts if c in default_cols])
+    sel = [c for gr in grupos for c in (st.session_state.get(f"scr_cg_{gr}") or [])]
+    extra = [m for m in mets if m not in sel]
+    todas = sel + extra
+    st.markdown(f"<div class='subtle' style='margin:.2rem 0 .1rem'><b>Columnas visibles ({len(todas)}):</b> "
+                + html_escape(", ".join(todas)).replace("$", "&#36;") + "</div>", unsafe_allow_html=True)
+    with st.expander("🧱 Elegir columnas", expanded=False):
+        st.caption("Pulsa una columna para mostrarla u ocultarla. Las métricas por las que filtras se ven siempre.")
+        for gr, opts in grupos.items():
+            c = st.columns([1, 7], vertical_alignment="center")
+            c[0].markdown(f"<div class='subtle' style='font-weight:700'>{gr}</div>", unsafe_allow_html=True)
+            c[1].pills(gr, opts, selection_mode="multi", key=f"scr_cg_{gr}", label_visibility="collapsed", wrap=True)
+        b = st.columns([1, 1, 4])
+        b[0].button("Por defecto", on_click=_cols_por_defecto, args=(grupos, default_cols), width="stretch")
+        b[1].button("Solo lo básico", on_click=_cols_por_defecto,
+                    args=(grupos, ["Empresa", "Negocio", "Precio", "PER", "Nota financiera"]), width="stretch")
+    for gr in grupos:
+        sp[f"scr_cg_{gr}"] = list(st.session_state.get(f"scr_cg_{gr}") or [])
+    sel = [c for gr in grupos for c in (st.session_state.get(f"scr_cg_{gr}") or [])]
+    return sel + [m for m in mets if m not in sel]
 
 
 # ------------------------------------------------------------------ Lote
