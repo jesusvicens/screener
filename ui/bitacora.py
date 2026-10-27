@@ -30,6 +30,13 @@ def tab(T: str, ca):
     from ui.ayuda import explica
     explica("bitacora")
     try:
+        from ui import conclusion as CO
+        st.markdown("## Mi conclusión")
+        st.caption("Tu opinión en una palabra y en dos o tres frases. Sale en «Mis análisis», en la cabecera de la ficha y en tus listas.")
+        CO.editor(T, (storage.load(T) or {}).get("conclusion"), key=f"concl_{T}")
+    except Exception as e:  # noqa: BLE001
+        st.caption(f"No se ha podido cargar la conclusión: {e}")
+    try:
         from ui import tareas
         tareas.bloque_ficha(T)
     except Exception as e:  # noqa: BLE001

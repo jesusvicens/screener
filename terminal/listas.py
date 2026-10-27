@@ -1,4 +1,4 @@
-"""Tus listas de seguimiento (A analizar, Analizadas, Para más adelante, Caras…) y la prioridad de análisis.
+"""Tus listas de seguimiento (En cartera, A analizar, Caras, Descartadas, Seguir de cerca, Aceptadas) y la prioridad de análisis.
 
 Se guardan en el documento «_LISTAS» del almacenamiento (tu repo privado de datos online):
     {"grupos": ["A analizar", ...],
@@ -14,7 +14,8 @@ from . import storage
 
 DOC = "_LISTAS"
 CARTERA = "En cartera"
-DEFAULT_GROUPS = [CARTERA, "A analizar", "Analizadas", "Para más adelante", "Caras (esperar precio)", "Descartadas"]
+DEFAULT_GROUPS = [CARTERA, "A analizar", "Caras (esperar precio)", "Descartadas", "Seguir de cerca", "Aceptadas"]
+RENOMBRAR = {"Analizadas": "Aceptadas", "Para más adelante": "Seguir de cerca"}  # nombres antiguos → nuevos
 
 
 def _norm(e: dict) -> dict:
@@ -22,6 +23,7 @@ def _norm(e: dict) -> dict:
     ls = list(e.get("listas") or [])
     if e.get("grupo") and e["grupo"] not in ls:
         ls.append(e["grupo"])
+    ls = list(dict.fromkeys(RENOMBRAR.get(g, g) for g in ls))
     e.pop("grupo", None)
     e["listas"] = ls
     e.setdefault("comentario", "")
@@ -31,7 +33,8 @@ def _norm(e: dict) -> dict:
 
 def load() -> dict:
     d = storage.load(DOC) or {}
-    grupos = d.get("grupos") or list(DEFAULT_GROUPS)
+    viejos = [RENOMBRAR.get(g, g) for g in (d.get("grupos") or [])]
+    grupos = list(DEFAULT_GROUPS) + [g for g in dict.fromkeys(viejos) if g not in DEFAULT_GROUPS]
     emp = {t: _norm(dict(e)) for t, e in (d.get("empresas") or {}).items()}
     for e in emp.values():  # listas que solo aparecen en empresas (por si se borró de la lista de listas)
         for g in e["listas"]:

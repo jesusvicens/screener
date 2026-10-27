@@ -63,14 +63,14 @@ def screener_page():
                 unsafe_allow_html=True)
     st.markdown("<span class='subtle'>SCREENER · COTIZADAS DE EE. UU. Y EUROPA</span>", unsafe_allow_html=True)
     st.markdown("# Screener")
-    t_scr, t_pri = st.tabs(["Screener", "Panel, prioridad y listas"], key="scr_main", on_change="rerun")
-    if t_scr.open:
-        with t_scr:
-            _screener_body()
-    if t_pri.open:
-        with t_pri:
-            from ui import prioridad
-            prioridad.body()
+    _screener_body()
+
+
+def listas_page():
+    st.markdown("<span class='subtle'>LISTAS</span>", unsafe_allow_html=True)
+    st.markdown("# Mis listas")
+    from ui import prioridad
+    prioridad.body()
 
 
 def _screener_body():
@@ -236,9 +236,6 @@ def _screener_body():
         _go_company(pick)
     b[1].download_button("⬇ CSV", res.drop(columns=[c for c in res.columns if c.startswith("_")]).to_csv(index=False).encode("utf-8"),
                          "screener.csv", width="stretch")
-    if b[2].button("→ Analizar en lote (máx. 60)", width="stretch"):
-        st.session_state["lote_tickers"] = ", ".join(list(out.index)[:60])
-        st.switch_page(st.session_state["_page_lote"])
     st.caption("Datos: frames de la SEC (el ejercicio que mejor encaja con el año natural; saldos al cierre más cercano a diciembre), "
                "BPA y acciones ajustados por splits. Precios, capitalización y sector: screener público de Nasdaq. "
                "Ojo con empresas que reportan en otra divisa (PER y P/V sin sentido) y con bancos/aseguradoras (sin margen bruto).")
@@ -290,34 +287,79 @@ def lote_page():
 
 # ------------------------------------------------------------------ Mis análisis
 def mis_analisis_page():
+    from ui import conclusion as CO
+    from ui.common import company_url as _cu
     st.markdown("<span class='subtle'>MIS ANÁLISIS</span>", unsafe_allow_html=True)
-    st.markdown("# Mis análisis guardados")
-    st.caption(f"Almacenamiento: {storage.backend()}.")
+    st.markdown("# Mis análisis")
     try:
         items = storage.list_all()
     except Exception as e:  # noqa: BLE001
         st.error(f"No he podido leer los análisis: {e}")
         return
+    items = [it for it in (items or []) if it.get("ticker") and not str(it.get("ticker")).startswith("_")]
     if not items:
         st.info("Aún no has guardado ninguno. Abre una empresa y pulsa «Guardar análisis».")
         return
-    items = [it for it in items if not str(it.get("ticker", "")).startswith("_")]
-    if not items:
-        st.info("Aún no has guardado ninguno. Abre una empresa y pulsa «Guardar análisis».")
-        return
+    try:
+        from terminal import listas as L
+        dl = L.load()
+    except Exception:  # noqa: BLE001
+        dl = {"empresas": {}}
+    try:
+        from ui import universo
+        uni = universo.table()
+        idx = uni.drop_duplicates("Ticker").set_index("Ticker") if uni is not None else None
+    except Exception:  # noqa: BLE001
+        idx = None
+    ops = ["Todas"] + list(CO.OPINIONES) + ["Sin conclusión"]
+    c = st.columns([3, 1.3])
+    filtro = c[0].segmented_control("Opinión", ops, default="Todas", key="mis_op", label_visibility="collapsed") or "Todas"
+    orden = c[1].selectbox("Orden", ["Opinión", "Nombre", "Más reciente", "Margen de seguridad"], key="mis_orden",
+                           label_visibility="collapsed", format_func=lambda o: f"Ordenar por: {o.lower()}")
+    st.caption("Tu conclusión de cada empresa que has analizado. Se edita aquí («✏️») o en su ficha → Seguimiento → Mis notas y bitácora. "
+               "Las cifras son las del día que guardaste el análisis.")
     rows = []
     for it in items:
-        r = dict(it.get("resumen") or {})
-        r.setdefault("Ticker", it.get("ticker"))
-        r["Actualizado"] = it.get("actualizado")
-        r["Tesis"] = (it.get("notas") or "")[:80]
-        rows.append(r)
-    df = pd.DataFrame(rows)
-    show_cols_table(df.set_index("Ticker"), height=min(80 + 35 * len(df), 700))
-    st.caption("El resumen es la foto del momento en que guardaste (precio y valoración de ese día).")
-    pick = st.selectbox("Abrir ficha", list(df["Ticker"]), index=None, placeholder="Elige una empresa…")
-    if pick:
-        _go_company(pick)
+        t = it.get("ticker")
+        con = it.get("conclusion") or {}
+        res = it.get("resumen") or {}
+        rows.append((t, it, con, res))
+    if filtro == "Sin conclusión":
+        rows = [r for r in rows if not r[2].get("opinion")]
+    elif filtro != "Todas":
+        rows = [r for r in rows if r[2].get("opinion") == filtro]
+    rank = {o: i for i, o in enumerate(CO.OPINIONES)}
+    key = {"Opinión": lambda r: (rank.get(r[2].get("opinion"), 99), str(r[0])),
+           "Nombre": lambda r: str((r[3].get("Empresa") or r[0])).lower(),
+           "Más reciente": lambda r: str(r[1].get("actualizado") or ""),
+           "Margen de seguridad": lambda r: -(r[3].get("Margen de seguridad") or -9)}[orden]
+    rows.sort(key=key, reverse=(orden == "Más reciente"))
+    if not rows:
+        st.caption("Ninguna empresa con esa opinión.")
+    for t, it, con, res in rows:
+        nombre = res.get("Empresa") or (str(idx.loc[t, "Empresa"]) if idx is not None and t in idx.index else t)
+        with st.container(border=True):
+            a = st.columns([3.6, 1, 1, 1, 0.6], vertical_alignment="top")
+            ls = ", ".join((dl["empresas"].get(t) or {}).get("listas", []))
+            url = _cu(t, nombre).split("#")[0]
+            a[0].markdown(f"<a href='{url}' target='_blank' style='font-weight:700;font-size:1.05rem;color:#1f2937;text-decoration:none'>"
+                          f"{html_escape(str(nombre))}</a> <span style='color:#6b7280;font-size:.8rem'>{t}"
+                          + (f" · {html_escape(ls)}" if ls else "") + "</span>", unsafe_allow_html=True)
+            blq = CO.html_bloque(con)
+            a[0].markdown(f"<div style='font-size:.9rem;line-height:1.4;margin-top:.2rem'>{blq}</div>" if blq else
+                          "<div style='color:#9ca3af;font-size:.85rem'>Sin conclusión todavía.</div>", unsafe_allow_html=True)
+            nota = res.get("Nota final") or res.get("Nota financiera")
+            a[1].metric("Nota", "—" if nota is None else num(nota, 2))
+            ms = res.get("Margen de seguridad")
+            a[2].metric("Margen seg.", "—" if ms is None else pct(ms))
+            a[3].metric("Guardado", str(it.get("actualizado") or "—")[:10])
+            with a[4].popover("✏️", help="Editar la conclusión"):
+                CO.editor(t, con, key=f"mis_ed_{t}")
+
+
+def html_escape(x: str) -> str:
+    import html as _h
+    return _h.escape(x)
 
 
 # ------------------------------------------------------------------ Cartera

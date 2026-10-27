@@ -15,7 +15,7 @@ import streamlit as st
 from terminal import listas, sec, storage
 from ui.common import fmt_cell, link_key, num, pct
 
-CORTO = {"En cartera": "💼 En cartera", "Caras (esperar precio)": "Caras", "Para más adelante": "Más adelante"}
+CORTO = {"En cartera": "💼 En cartera", "Caras (esperar precio)": "Caras", "Seguir de cerca": "Seguir"}
 ORDENES = {"Nombre": ("Empresa", True), "Nota financiera": ("Nota financiera", False), "PER": ("PER", True),
            "Margen de seguridad": ("Margen", False), "Capitalización": ("Capitalización (M$)", False)}
 

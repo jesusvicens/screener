@@ -457,10 +457,15 @@ def _que_hace(ca):
     m = _re.search(r"### En una frase\s*\n+(.+?)(?:\n\s*\n|\n###|$)", dossier, _re.S)
     frase = m.group(1).strip() if m else ""
     larga = descripciones.larga(T)
-    if not frase and not larga:
+    if not frase and not larga and not (st.session_state.get(f"saved_{T}") or {}).get("conclusion"):
         return
-    st.markdown(f"<div class='que-hace'><b>Qué hace:</b> {(frase or descripciones.resumir(larga, 400)).replace('$', '&#36;')}</div>",
-                unsafe_allow_html=True)
+    from ui import conclusion as CO
+    txt = CO._md(frase) if frase else descripciones.resumir(larga, 400).replace('$', '&#36;')
+    st.markdown(f"<div class='que-hace'><b>Qué hace:</b> {txt}</div>", unsafe_allow_html=True)
+    con = (st.session_state.get(f"saved_{T}") or {}).get("conclusion")
+    if con:
+        st.markdown(f"<div class='que-hace' style='border-left-color:#b45309;background:#fffaf2'><b>Mi conclusión:</b> "
+                    f"{CO.html_bloque(con)}</div>", unsafe_allow_html=True)
     if larga:
         with st.expander("Descripción completa de la actividad (en inglés, Yahoo Finance)"):
             st.markdown(larga.replace("$", "\\$"))
