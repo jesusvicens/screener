@@ -214,7 +214,8 @@ def _screener_body():
         out["Empresa"] = [company_url(t, n) for t, n in zip(out.index, out["Empresa"])]
         ccfg["Empresa"] = st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$",
                                                      help="Clic para abrir la ficha en una pestaña nueva")
-    show_cols_table(out, height=700, kinds={k: v for k, v in kinds.items() if k in out.columns}, column_config=ccfg, row_height=rh)
+    show_cols_table(out, height=700, kinds={k: v for k, v in kinds.items() if k in out.columns}, column_config=ccfg, row_height=rh,
+                    key="scr_tabla")
     if any(c in out.columns for c in ("Cobertura", "Margen de seguridad", "Valor estimado")):
         st.caption("Cobertura, margen de seguridad y valor estimado salen de la **proyección estándar** (los 4 escenarios que la ficha "
                    "propone por fase, r = 10 %, n = 10 años), recalculados con el precio de hoy. Si tienes la empresa analizada con "

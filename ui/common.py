@@ -280,7 +280,7 @@ def alto_filas(key: str, default: str = "3 líneas") -> int | None:
 
 
 def show_cols_table(df: pd.DataFrame, height: int | None = None, kinds: dict | None = None, column_config: dict | None = None,
-                    row_height: int | None = None):
+                    row_height: int | None = None, key: str | None = None):
     """Tabla con columnas = conceptos (formato por columna).
 
     Los valores siguen siendo números (al pulsar el título de una columna se ordena bien) y solo cambia cómo se muestran.
@@ -309,8 +309,11 @@ def show_cols_table(df: pd.DataFrame, height: int | None = None, kinds: dict | N
         if is_growth(c) and k == "pct":
             sty = sty.map((lambda v: _sign_css(-v) if _isnum(v) else "") if is_inverse(c) else _sign_css, subset=[c])
     rh = row_height or 35
+    if key:  # una clave que cambia con las columnas: la tabla se vuelve a montar entera (si no, el desplazamiento
+        import hashlib  # horizontal puede quedarse con el ancho de antes al añadir o quitar columnas)
+        key = f"{key}_{hashlib.md5(('|'.join(map(str, out.columns)) + str(row_height)).encode()).hexdigest()[:8]}"
     st.dataframe(sty, width="stretch", height=height or min(38 + rh * len(out), 700), column_config=column_config or None,
-                 row_height=row_height)
+                 row_height=row_height, key=key)
 
 
 def kv_table(d: dict):
