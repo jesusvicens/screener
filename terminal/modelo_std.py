@@ -91,6 +91,10 @@ def con_cobertura(df: pd.DataFrame) -> pd.DataFrame:
         ok &= ~(mon.notna() & (mon != "USD") & fxr.isna()).to_numpy()
     with np.errstate(divide="ignore", invalid="ignore"):
         ok &= ~((evf / (1 + R) ** N) > TOPE * P.to_numpy())
+    # Margen operativo de más del 80 %: casi siempre revalorizaciones de inmuebles o plusvalías contadas como ventas
+    # (inmobiliarias, holdings); la proyección por márgenes no sirve.
+    if "Margen operativo" in df:
+        ok &= ~(pd.to_numeric(df["Margen operativo"], errors="coerce") > 0.8).fillna(False).to_numpy()
     df["Valoración dudosa"] = np.isfinite(vf).all(axis=1) & ~ok
     with np.errstate(divide="ignore", invalid="ignore"):
         cov = np.where(deficit > 0, opp / deficit, np.inf)
