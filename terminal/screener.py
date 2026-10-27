@@ -92,6 +92,9 @@ METRICS: list[tuple[str, str, str, str]] = [
      "Positivo: cotiza por debajo del valor estimado. Tu margen exigido por defecto es 15 %."),
     ("Rentab. implícita", "Valoración", "pct", "Rentabilidad anual que da el valor futuro esperado (proyección estándar) al precio de hoy"),
     ("Prob. no compensar", "Valoración", "pct", "Probabilidad (suma de escenarios) de no llegar al umbral precio × (1+r)^n"),
+    ("Crec. que exige el precio", "Valoración", "pct", "Crecimiento anual del BPA durante 10 años que necesita el precio de hoy para darte un 10 % "
+     "anual si al final cotiza al PER de salida del escenario base. Compáralo con su CAGR BPA 5a: si exige más de lo que "
+     "ha crecido nunca, el precio ya descuenta mucho."),
 ]
 METRIC_KIND = {m: k for m, _g, k, _d in METRICS}
 METRIC_HELP = {m: d for m, _g, _k, d in METRICS}
@@ -109,6 +112,9 @@ PRESETS: dict[str, dict[str, tuple[float | None, float | None]]] = {
                                          "PER": (0, 20), "Ventas (M$)": (500, None)},
     "Máquinas de caja": {"Margen FCF": (0.20, None), "FCF / beneficio": (1.0, None), "Capex / OCF": (None, 0.25), "Ventas (M$)": (500, None)},
     "Recompradores": {"Var. acciones 5a": (None, -0.02), "Recompras / FCF": (0.5, None), "ROE": (0.15, None)},
+    "Calidad con margen de seguridad (proyección estándar)": {
+        "Nota financiera": (7.5, None), "Margen de seguridad": (0.15, None), "Prob. no compensar": (None, 0.35),
+        "Crec. que exige el precio": (None, 0.10), "Ventas (M$)": (300, None)},
     "Value clásico": {"PER": (0, 15), "P/Valor contable": (0, 2), "Deuda / patrimonio": (None, 0.8), "Años con pérdidas": (None, 0)},
 }
 

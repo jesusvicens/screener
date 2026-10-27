@@ -197,6 +197,7 @@ def history_stats(f: Financials) -> dict:
         return _div(_sum(f.get(num, y) for y in years), _sum(f.get(den, y) for y in years))
 
     s: dict = {}
+    s["rev_last_usd"] = (rev.get(L) or 0) * FX_USD.get((f.currency or "USD").upper(), 1.0)  # millones de $ (aprox.)
     s["g3"] = _cagr(rev.get(L), rev.get(back(3)), 3) if back(3) else None
     s["g5"] = _cagr(rev.get(L), rev.get(back(5)), 5) if back(5) else None
     s["g9"] = _cagr(rev.get(L), rev.get(ys[0]), N - 1) if N > 1 else None
@@ -276,13 +277,35 @@ def exit_per(g10: float, r: float, roe5: float | None) -> float:
     return max(5.0, (1 - g / roe) * (1 + g) / (r - g))
 
 
+# Tipos de cambio aproximados a $ (solo para saber el tamaño de la empresa al poner topes de crecimiento).
+FX_USD = {"USD": 1.0, "EUR": 1.1, "GBP": 1.3, "CHF": 1.15, "SEK": 0.095, "DKK": 0.15, "NOK": 0.095, "PLN": 0.26,
+          "CZK": 0.044, "HUF": 0.0028, "JPY": 0.0068, "CNY": 0.14, "HKD": 0.13, "CAD": 0.73, "AUD": 0.66, "ILS": 0.27,
+          "TWD": 0.031, "KRW": 0.00073, "INR": 0.012, "BRL": 0.18, "MXN": 0.055, "ZAR": 0.055, "RON": 0.22, "ISK": 0.0073}
+
+
+def tope_por_tamano(ventas_usd_m: float | None) -> float:
+    """Crecimiento anual máximo de partida según el tamaño (ventas en millones de $): cuanto más grande, menos
+    puede crecer durante años sin chocar con el tamaño de su mercado (una empresa de 200.000 M$ al 30 % anual
+    facturaría 2,8 billones en diez años)."""
+    v = ventas_usd_m or 0
+    for lim, tope in ((1_000, 0.30), (10_000, 0.25), (50_000, 0.20), (150_000, 0.15)):
+        if v < lim:
+            return tope
+    return 0.10
+
+
+# Crecimiento máximo en el año 10 por escenario: a diez vista casi ninguna empresa sigue creciendo a doble dígito.
+TOPE_G10 = {"Optimista": 0.12, "Base": 0.08, "Adverso": 0.05, "Desastre": 0.03}
+
+
 def propose_scenarios(stats: dict, params: InvestorParams, phase: str) -> dict[str, dict]:
     i = PHASES.index(phase) if phase in PHASES else 1
     # Topes de cordura: ningún escenario propuesto parte de crecimientos de más del 30 % anual (ni menos del −30 %) ni de
     # márgenes imposibles (bruto entre 0 y 100 %; operativo entre −50 % y el bruto). Tus supuestos escritos a mano no se tocan.
     clip = lambda x, lo, hi: min(max(x, lo), hi)  # noqa: E731
-    g3 = clip(stats.get("g3") or 0.0, -0.30, 0.30)
-    g9 = clip(stats.get("g9") or 0.0, -0.30, 0.30)
+    tope = tope_por_tamano(stats.get("rev_last_usd"))
+    g3 = clip(stats.get("g3") or 0.0, -0.30, tope)
+    g9 = clip(stats.get("g9") or 0.0, -0.30, tope)
     glt = params.g_lt
     gl, g5m, g10m, gmin, gmax = (clip(stats.get(k) or 0.0, 0.0, 1.0) for k in ("gm_last", "gm5", "gm10", "gm_min", "gm_max"))
     ol, o5, o10, omin, omax = (clip(stats.get(k) or 0.0, -0.5, 1.0) for k in ("om_last", "om5", "om10", "om_min", "om_max"))
@@ -311,6 +334,8 @@ def propose_scenarios(stats: dict, params: InvestorParams, phase: str) -> dict[s
             "buyback": 0.0, "prob": pick([0.1, 0.05, 0.1, 0.15, 0.1, 0.15])},
     }
     for k in sc:
+        sc[k]["g1"] = min(sc[k]["g1"], tope)
+        sc[k]["g10"] = min(sc[k]["g10"], TOPE_G10.get(k, 0.12))
         sc[k]["gm"] = max(sc[k]["gm"], 0.0)
         sc[k]["om"] = min(sc[k]["om"], sc[k]["gm"])
         sc[k]["per_exit"] = exit_per(sc[k]["g10"], params.r, stats.get("roe5"))

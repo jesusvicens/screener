@@ -19,10 +19,10 @@ from . import analysis as A
 
 ESC = ("Optimista", "Base", "Adverso", "Desastre")
 R, N, MOS = 0.10, 10, 0.15
-COLS = [f"_vf_{k}" for k in ESC] + [f"_p_{k}" for k in ESC] + ["_moneda"]
-VF_COLS = [c for c in COLS if c != "_moneda"]
+COLS = [f"_vf_{k}" for k in ESC] + [f"_p_{k}" for k in ESC] + ["_moneda", "_per_salida"]
+VF_COLS = [f"_vf_{k}" for k in ESC] + [f"_p_{k}" for k in ESC]
 TOPE = 5.0  # valor estimado de más de 5 veces el precio: casi siempre datos que no cuadran (split reciente, ADR en otra divisa…)
-OUT = ["Cobertura", "Margen de seguridad", "Valor estimado", "Rentab. implícita", "Prob. no compensar"]
+OUT = ["Cobertura", "Margen de seguridad", "Valor estimado", "Rentab. implícita", "Prob. no compensar", "Crec. que exige el precio"]
 
 
 def valores_futuros(fin, price: float | None = None, acciones: float | None = None) -> dict | None:
@@ -59,6 +59,7 @@ def valores_futuros(fin, price: float | None = None, acciones: float | None = No
                 return None
             out[f"_vf_{k}"] = round(float(vf), 4)
             out[f"_p_{k}"] = round(float(sc[k]["prob"]), 4)
+        out["_per_salida"] = round(float(sc["Base"]["per_exit"]), 3)
         return out
     except Exception:  # noqa: BLE001
         return None
@@ -101,4 +102,12 @@ def con_cobertura(df: pd.DataFrame) -> pd.DataFrame:
     df["Valor estimado"] = np.where(ok | (np.isfinite(v_hoy) & ~np.isfinite(U[:, 0])), v_hoy / conv.to_numpy(), np.nan)
     df["Rentab. implícita"] = np.where(ok, rent, np.nan)
     df["Prob. no compensar"] = np.where(ok, risk, np.nan)
+    # Crecimiento anual del BPA que necesita el precio de hoy para darte tu rentabilidad exigida en n años, si al final
+    # cotiza al PER de salida del escenario base (la «ventana» de la ficha): (1+r)·(PER hoy / PER salida)^(1/n) − 1.
+    if "_per_salida" in df and "PER" in df:
+        per = pd.to_numeric(df["PER"], errors="coerce").where(lambda x: x > 0)
+        ps = pd.to_numeric(df["_per_salida"], errors="coerce").where(lambda x: x > 0)
+        df["Crec. que exige el precio"] = (1 + R) * (per / ps) ** (1 / N) - 1
+    elif "Crec. que exige el precio" not in df:
+        df["Crec. que exige el precio"] = np.nan
     return df
