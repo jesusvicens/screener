@@ -67,6 +67,9 @@ def screener_page():
 
 
 def listas_page():
+    # tablas a todo el ancho de la pantalla, como en el Screener
+    st.markdown("<style>.block-container{max-width:98% !important;padding-left:1.5rem;padding-right:1.5rem;}</style>",
+                unsafe_allow_html=True)
     st.markdown("<span class='subtle'>LISTAS</span>", unsafe_allow_html=True)
     st.markdown("# Mis listas")
     from ui import prioridad
