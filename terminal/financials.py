@@ -448,6 +448,32 @@ def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
             put(k, y, None if v is None else v / M)
 
     warnings = _adjust_splits(out, years)
+    # Cambio de presentación de los ingresos (p. ej. Adyen desde 2023): antes contaba en «ingresos» lo que cobra y
+    # paga a las redes de tarjetas (ventas ~5 veces mayores con un margen bruto del ~15 %) y después solo sus ingresos
+    # netos. Si las ventas caen de golpe mientras el margen bruto sigue subiendo, se usan los ingresos netos (margen
+    # bruto) en todos los años para que la serie sea comparable.
+    rv = [(out.get("revenue") or {}).get(y) for y in years]
+    gpv = [(out.get("gross_profit") or {}).get(y) for y in years]
+    brk = None
+    for i in range(len(years) - 1):
+        a, b, ga, gb = rv[i], rv[i + 1], gpv[i], gpv[i + 1]
+        if a and b and ga and gb and a > 0 and b > 0 and a / b >= 2.5 and gb >= 0.8 * ga and ga / a <= 0.4 and gb / b >= 0.6:
+            brk = i
+    if brk is not None:
+        cambio = years[brk + 1]
+        sin_coste = [y for y in years[:brk + 1] if not (out.get("cogs") or {}).get(y)]  # años sin coste de ventas etiquetado
+        for y in years:
+            g = (out.get("gross_profit") or {}).get(y)
+            if g is not None:
+                out.setdefault("revenue", {})[y] = g
+                out.setdefault("cogs", {})[y] = 0.0
+        if sin_coste:
+            years = [y for y in years if y not in sin_coste]
+        warnings.append(f"La empresa cambió en {cambio} cómo presenta los ingresos "
+                        "(antes incluía lo que cobra y paga a terceros, como las redes de tarjetas): se usan los ingresos netos "
+                        "(margen bruto) en todos los años" + (f"; fuera {', '.join(map(str, sin_coste))} por no traer el coste de ventas."
+                                                                 if sin_coste else "."))
+
     # Acciones en otra escala (algunas empresas etiquetan «WeightedAverageNumberOfDilutedSharesOutstanding» ya en
     # millones o en miles): si no cuadran con beneficio / BPA (más de ×5 de diferencia), mandan beneficio / BPA.
     arregladas = []
