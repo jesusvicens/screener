@@ -210,7 +210,8 @@ def _fiscal_year(end: str) -> int:
     return d.year - 1 if (d.month == 1 and d.day <= 7) else d.year
 
 
-def _annual_values(facts: dict, taxonomy: str, tag: str, kind: str) -> tuple[dict[int, float], str | None, dict[int, str]]:
+def _annual_values(facts: dict, taxonomy: str, tag: str, kind: str,
+                   pref: str = "USD") -> tuple[dict[int, float], str | None, dict[int, str]]:
     node = facts.get("facts", {}).get(taxonomy, {}).get(tag)
     if not node:
         return {}, None, {}
@@ -218,9 +219,9 @@ def _annual_values(facts: dict, taxonomy: str, tag: str, kind: str) -> tuple[dic
     if kind in ("sh", "sh_inst"):
         unit = "shares" if "shares" in units else next(iter(units), None)
     elif kind == "ps":
-        unit = next((u for u in units if "/shares" in u), None)
+        unit = f"{pref}/shares" if f"{pref}/shares" in units else next((u for u in units if "/shares" in u), None)
     else:
-        unit = "USD" if "USD" in units else next((u for u in units if "/" not in u and u not in ("shares", "pure")), None)
+        unit = pref if pref in units else next((u for u in units if "/" not in u and u not in ("shares", "pure")), None)
     if unit is None:
         return {}, None, {}
     best: dict[int, tuple[str, str, float]] = {}  # año -> (fin, presentado, valor)
@@ -280,6 +281,39 @@ def _adjust_splits(out: dict, years: list[int]) -> list[str]:
     return notes
 
 
+def _main_currency(facts: dict, has_usgaap: bool) -> str:
+    """Divisa en la que leer las cuentas. Por defecto, dólares (como siempre).
+
+    Las extranjeras que presentan en otra divisa (las chinas, en yuanes) suelen añadir una «traducción de conveniencia»
+    a dólares solo del último año de cada informe. Si con esos dólares se cubre casi toda la historia, se usan (las
+    cifras quedan en $, comparables con las de EE. UU.); si no (p. ej. XPeng, Miniso), se usa la divisa del informe,
+    que tiene todos los años, en vez de quedarse con un único año suelto en dólares.
+    """
+    years: dict[str, set[int]] = {}
+    for key, _lbl, kind, gaap_tags, ifrs_tags in CONCEPTS:
+        if key not in ("revenue", "net_income"):
+            continue
+        tags = ([("us-gaap", t) for t in gaap_tags] if has_usgaap else []) + [("ifrs-full", t) for t in ifrs_tags]
+        for tax, tag in tags:
+            node = facts.get("facts", {}).get(tax, {}).get(tag) or {}
+            for u, xs in node.get("units", {}).items():
+                if "/" in u or u in ("shares", "pure"):
+                    continue
+                for x in xs:
+                    if x.get("form") in ANNUAL_FORMS and x.get("end") and "start" in x:
+                        if 340 <= (date.fromisoformat(x["end"]) - date.fromisoformat(x["start"])).days <= 380:
+                            years.setdefault(u, set()).add(_fiscal_year(x["end"]))
+    if not years or "USD" not in years:
+        return "USD" if not years else max(years, key=lambda u: (len(years[u]), max(years[u])))
+    usd = years["USD"]
+    best = max(years, key=lambda u: (len(years[u]), max(years[u])))
+    if best == "USD":
+        return "USD"
+    otra = years[best]
+    # dólares si tienen el último año y casi todos los de la otra divisa (faltan como mucho 2)
+    return "USD" if (max(usd) >= max(otra) and len(otra - usd) <= 2) else best
+
+
 def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
     raw: dict[str, dict[int, float]] = {}
     src: dict[str, dict[int, str]] = {}
@@ -287,6 +321,7 @@ def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
     currency = "USD"
     currency_votes: dict[str, int] = {}
     has_usgaap = bool(facts.get("facts", {}).get("us-gaap"))
+    pref = _main_currency(facts, has_usgaap)
 
     for key, _lbl, kind, gaap_tags, ifrs_tags in CONCEPTS:
         tags = [("us-gaap", t) for t in gaap_tags] if has_usgaap else []
@@ -294,7 +329,7 @@ def build(facts: dict, ticker: str, n_years: int = 10) -> Financials:
         merged: dict[int, float] = {}
         used: dict[int, str] = {}
         for tax, tag in tags:
-            vals, unit, ends = _annual_values(facts, tax, tag, kind)
+            vals, unit, ends = _annual_values(facts, tax, tag, kind, pref)
             for fy, v in vals.items():
                 if fy not in merged:
                     merged[fy] = v

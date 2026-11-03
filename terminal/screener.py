@@ -253,10 +253,96 @@ def build_base(progress=None, years_back: int = 10) -> pd.DataFrame:
             "FCF / beneficio": _d(fcf[-1], NI) if NI and NI > 0 else None,
             "Capex / OCF": _d(g["capex"][-1] or 0, g["ocf"][-1]) if g["ocf"][-1] and g["ocf"][-1] > 0 else None,
         })
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    try:
+        ch = build_chinas(by_cik, Y)
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠ chinas: {e}", flush=True)
+        ch = pd.DataFrame()
+    if not ch.empty:
+        df = pd.concat([df[~df["CIK"].isin(ch["CIK"])], ch], ignore_index=True)
+    return df
 
 
-def row_from_financials(fin, meta: dict, n: int = 11) -> dict | None:
+# ---------------------------------------------------------------- chinas que cotizan en EE. UU. (ADR, 20-F)
+DIVISAS_CHINA = {"CNY": "China", "HKD": "Hong Kong"}
+
+
+def fx_to_usd(currencies) -> dict[str, float]:
+    """Cuántos $ vale una unidad de cada divisa (Yahoo; si falla, tabla aproximada)."""
+    from .analysis import FX_USD
+    out = {"USD": 1.0}
+    need = sorted({c.upper() for c in currencies if c and c.upper() != "USD"})
+    if need:
+        try:
+            import yfinance as yf
+            px = yf.download([f"{c}USD=X" for c in need], period="7d", progress=False, auto_adjust=False)["Close"]
+            if isinstance(px, pd.Series):
+                px = px.to_frame(f"{need[0]}USD=X")
+            for k, v in px.ffill().iloc[-1].items():
+                if pd.notna(v) and v > 0:
+                    out[str(k)[:3]] = float(v)
+        except Exception:  # noqa: BLE001
+            pass
+    for c in need:
+        if c not in out and c in FX_USD:
+            out[c] = FX_USD[c]
+    return out
+
+
+def build_chinas(by_cik: dict[int, dict], Y: int) -> pd.DataFrame:
+    """Empresas chinas y de Hong Kong que cotizan en EE. UU. y presentan el 20-F en yuanes o dólares de Hong Kong.
+
+    Los «frames» de la SEC solo traen sus cifras cuando añaden una traducción a dólares, y no siempre (XPeng, Miniso,
+    GDS…). Aquí se leen las cuentas completas de cada una (igual que en la ficha) y se guarda el tipo de cambio para
+    pasarlas a $ al valorar.
+    """
+    ciks: dict[int, str] = {}
+    for cur in DIVISAS_CHINA:
+        for y in (Y, Y - 1):
+            for tax, tag in (("us-gaap", "NetIncomeLoss"), ("us-gaap", "ProfitLoss"), ("us-gaap", "Revenues"),
+                             ("us-gaap", "RevenueFromContractWithCustomerExcludingAssessedTax"),
+                             ("ifrs-full", "ProfitLoss"), ("ifrs-full", "Revenue")):
+                for c in sec.frame(tag, f"CY{y}", cur, taxonomy=tax):
+                    if c in by_cik:
+                        ciks.setdefault(c, cur)
+    # … y las que Nasdaq sitúa en China o Hong Kong aunque presenten en dólares (New Oriental, Weibo, Zai Lab…).
+    try:
+        mk = pd.read_pickle(PRICES_FILE)
+        pais = dict(zip(mk["Ticker"], mk["País"]))
+        for c, u in by_cik.items():
+            p = pais.get(u["ticker"])
+            if p in ("China", "Hong Kong", "Macau") and c not in ciks:
+                ciks[c] = "HKD" if p == "Hong Kong" else "CNY"
+    except Exception:  # noqa: BLE001
+        pass
+    from . import financials as F
+    rows = []
+    for cik, cur in ciks.items():
+        u = by_cik[cik]
+        try:
+            fin = F.build(sec.company_facts(cik, max_age_h=24 * 6), u["ticker"], n_years=11)
+            if not fin.years or fin.years[-1] < Y - 1:
+                continue
+            r = row_from_financials(fin, {"ticker": u["ticker"], "name": u["name"], "exchange": u["exchange"]}, cik=cik)
+        except Exception:  # noqa: BLE001
+            continue
+        if r:
+            r["_pais"] = DIVISAS_CHINA[cur] if fin.currency == "USD" or fin.currency not in DIVISAS_CHINA else DIVISAS_CHINA[fin.currency]
+            rows.append(r)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    fx = fx_to_usd(set(df["Divisa"]))
+    df["_fx_base"] = df["Divisa"].map(fx)
+    df = df[df["_fx_base"].notna()]
+    df["Ventas (M$)"] = df["Ventas (M$)"] * df["_fx_base"]
+    df["Beneficio (M$)"] = df["Beneficio (M$)"] * df["_fx_base"]
+    print(f"Chinas en EE. UU.: {len(df)} empresas ({(df['Divisa'] != 'USD').sum()} con cuentas en yuanes/HKD)", flush=True)
+    return df
+
+
+def row_from_financials(fin, meta: dict, n: int = 11, cik: int = 0) -> dict | None:
     """Fila del screener a partir de unos estados ya construidos (lo usan las empresas europeas, ESEF).
 
     Mismas columnas que build_base; los importes en la divisa del informe (se pasan a $ al valorar).
@@ -295,7 +381,7 @@ def row_from_financials(fin, meta: dict, n: int = 11) -> dict | None:
 
     gp = g("gross_profit")
     return {
-        "Ticker": meta["ticker"], "Empresa": meta["name"], "Mercado": meta.get("exchange") or "Europa", "CIK": 0, "Año datos": Y,
+        "Ticker": meta["ticker"], "Empresa": meta["name"], "Mercado": meta.get("exchange") or "Europa", "CIK": cik, "Año datos": Y,
         "Divisa": fin.currency, "LEI": meta.get("lei"),
         "_s_rev": rev, "_s_eps": eps, "_s_ni": ni, "_s_fcf": fcf,
         "BPA": eps[-1], "Acciones (M)": sh[-1] / M if sh[-1] else None,
@@ -471,8 +557,22 @@ def with_valuation(base: pd.DataFrame, mk: pd.DataFrame | None) -> pd.DataFrame:
         df[c] = df["Ticker"].map(mk[c]) if c in mk else None
     for c in ("Sector", "Industria", "País"):
         df[c] = df[c].fillna("—")
+    if "_fx_base" in df:
+        # Chinas en EE. UU.: tipo de cambio de sus cuentas a $ (de la base) y su país (Nasdaq pone algunas en «United States»).
+        fb = pd.to_numeric(df["_fx_base"], errors="coerce")
+        df["_fx_r"] = pd.to_numeric(df["_fx_r"], errors="coerce").fillna(fb)
+        if "_pais" in df:
+            df["País"] = df["_pais"].where(df["_pais"].notna(), df["País"])
+        # ADR: el precio es de un ADS, que equivale a varias acciones ordinarias (Alibaba, 8; NetEase, 5). Con la
+        # capitalización de Nasdaq se saca cuántos ADS hay por acción y así el PER y la cobertura comparan lo mismo.
+        mq = pd.to_numeric(df["_mcap_nq"], errors="coerce")
+        k = mq / (pd.to_numeric(df["Precio"], errors="coerce") * pd.to_numeric(df["Acciones (M)"], errors="coerce") * 1e6)
+        k = k.where(fb.notna() & (k > 0.005) & (k < 200))
+        df["_fx_q"] = pd.to_numeric(df["_fx_q"], errors="coerce").fillna(k)
     # Europeas: precio en la divisa de cotización y cuentas en la del informe → todo a $ para comparar tamaños y ratios.
     fxq = pd.to_numeric(df["_fx_q"], errors="coerce").fillna(1.0)
+    if "_fx_base" in df:  # ADR sin capitalización de Nasdaq: no se sabe cuántas acciones hay por ADS → sin ratios por acción
+        fxq = fxq.mask(pd.to_numeric(df["_fx_base"], errors="coerce").notna() & pd.to_numeric(df["_fx_q"], errors="coerce").isna())
     fxr = pd.to_numeric(df["_fx_r"], errors="coerce").fillna(1.0)
     eu = pd.to_numeric(df["_fx_r"], errors="coerce").notna()
     if eu.any():
