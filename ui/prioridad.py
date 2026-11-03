@@ -100,7 +100,8 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
     namax = c[1].number_input("Máx. preguntas «No aplica»", 0, 21, 3)
     vmin = c[2].number_input("Ventas mínimas (M$)", 0, 1_000_000, 300, 100)
     sectors = c[3].multiselect("Sector", sorted(s for s in df["Sector"].dropna().unique() if s != "—"), placeholder="Todos")
-    orden = c[4].selectbox("Ordenar por", ["Prioridad (nota + precio)", "Nota financiera", "Crec. medio BPA", "Rent. FCF"])
+    orden = c[4].selectbox("Ordenar por", ["Prioridad (financiera + cualitativa + precio)", "Nota financiera", "Nota cualitativa",
+                                             "Crec. medio BPA", "Rent. FCF"])
     e = st.columns([1, 1, 1, 1])
     excl_listas = e[0].toggle("Ocultar las que ya están en tus listas", True)
     excl_guard = e[1].toggle("Ocultar las que ya tienes analizadas", True)
@@ -120,6 +121,17 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
         cand = cand[~cand["Ticker"].isin(list(d["empresas"]))]
     if excl_guard:
         cand = cand[~cand["Ticker"].isin(list(gu))]
+    # Análisis cualitativos (de Claude, cada día; o tuyos si ya contestaste el examen)
+    from terminal import candidatas
+    try:
+        cq = candidatas.indice()
+    except Exception:  # noqa: BLE001
+        cq = {}
+    cand["Nota cualitativa"] = cand["Ticker"].map(lambda t: (cq.get(t) or {}).get("nota_cualitativa"))
+    cand["Análisis cualitativo"] = cand["Ticker"].map(lambda t: (cq.get(t) or {}).get("fecha"))
+    cand["Veredicto"] = cand["Ticker"].map(lambda t: (cq.get(t) or {}).get("veredicto"))
+    if e[3].toggle("Solo con análisis cualitativo", False, help=f"{len(cq)} empresas analizadas por Claude hasta hoy"):
+        cand = cand[cand["Nota cualitativa"].notna()]
     det = listas.prioridad_detalle(cand)
     for c in det.columns:
         cand[c] = det[c]
@@ -129,9 +141,13 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
     st.markdown(f"## {num(len(cand))} candidatas")
     with st.container(border=True):
         st.markdown(
-            f"**Cómo se ordena.** Prioridad (0-10) = **{listas.PESO_NOTA:.0%} calidad** + **{listas.PESO_PRECIO:.0%} precio**.  \n"
-            f"· **Puntos por nota** = nota financiera × {listas.PESO_NOTA:.1f}. La nota es tu examen financiero de 21 preguntas "
-            "(PyG, Balance, Cash Flow y Asignación de capital) calculado con 10 años de datos. Una nota de 9 aporta 6,3 puntos.  \n"
+            f"**Cómo se ordena.** Prioridad (0-10) = **{listas.PESO_NOTA_Q:.0%} nota financiera** + **{listas.PESO_CUAL_Q:.0%} nota cualitativa** + "
+            f"**{listas.PESO_PRECIO:.0%} precio**.  \n"
+            f"· **Puntos por nota** = nota financiera × {listas.PESO_NOTA_Q:.1f}. La nota es tu examen financiero de 21 preguntas "
+            "(PyG, Balance, Cash Flow y Asignación de capital) calculado con 10 años de datos.  \n"
+            f"· **Puntos por cualitativo** = nota cualitativa × {listas.PESO_CUAL_Q:.1f}: tu examen cualitativo de 20 preguntas (negocio, producto, "
+            "dirección, estrategia, cultura y sector), contestado por Claude con un análisis completo de la empresa (cada día analiza "
+            f"nuevas candidatas; lleva {len(cq)}). Mientras no esté analizada, cuenta 5 (1,5 puntos).  \n"
             f"· **Puntos por precio** = posición de 0 a 10 × {listas.PESO_PRECIO:.1f}. Se compara la **rentabilidad por caja libre** "
             "(flujo de caja libre ÷ capitalización: cuánto «rinde» la empresa al precio de hoy) con la del resto de candidatas de "
             "esta lista: la que más rinde saca 10 (3 puntos) y la que menos, 0. Si el dato no es fiable o falta, cuenta 5 (1,5 puntos).  \n"
@@ -141,7 +157,8 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
         top = cand.iloc[0]
         st.markdown(f"**La primera, {top['Ticker']}** ({top['Empresa']}): {top['Prioridad']:.2f} puntos = "
                     f"{top['Puntos por nota']:.2f} por nota + {top['Puntos por precio']:.2f} por precio. {top['Motivo']}.")
-    cols = ["Empresa", "Negocio", "Prioridad", "Puntos por nota", "Puntos por precio", "Motivo", "Nota financiera", "Nota PyG", "Nota Balance",
+    cols = ["Empresa", "Negocio", "Prioridad", "Puntos por nota", "Puntos por cualitativo", "Puntos por precio", "Nota cualitativa", "Veredicto",
+            "Motivo", "Análisis cualitativo", "Nota financiera", "Nota PyG", "Nota Balance",
             "Nota Cash Flow", "Nota Asignación de capital", "Sector", "Capitalización (M$)", "PER", "Rent. FCF", "Crec. medio BPA",
             "CAGR ventas 5a", "ROE medio 5a"]
     from terminal import descripciones
@@ -151,7 +168,8 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
     out = out.rename(columns={"Crec. medio BPA": "Crec. medio BPA 5a"})
     out["Empresa"] = [company_url(t, n) for t, n in zip(out.index, out["Empresa"])]
     kinds = {k: v for k, v in screener.METRIC_KIND.items()}
-    kinds.update({"Prioridad": "ps", "Puntos por nota": "ps", "Puntos por precio": "ps", "Crec. medio BPA 5a": "pct"})
+    kinds.update({"Prioridad": "ps", "Puntos por nota": "ps", "Puntos por cualitativo": "ps", "Puntos por precio": "ps", "Nota cualitativa": "ps",
+                  "Crec. medio BPA 5a": "pct"})
     ah = st.columns([3, 1.2])
     with ah[1]:
         rh = alto_filas("rec_alto")
@@ -159,6 +177,8 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
                     column_config={"Empresa": st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$",
                                                                           help="Abre la ficha en una pestaña nueva"),
                                    "Negocio": st.column_config.TextColumn("Negocio", width="large", help="Qué hace la empresa: tu «En una frase» si tienes dossier; si no, el resumen de su actividad (Yahoo Finance/Nasdaq, en inglés). Pasa el ratón para leerlo entero."),
+                                   "Veredicto": st.column_config.TextColumn("Veredicto", width="large",
+                                                                            help="Conclusión del análisis cualitativo de Claude, en una línea"),
                                    "Motivo": st.column_config.TextColumn("Motivo", width="large",
                                                                          help="Por qué está en esta posición")})
     if len(cand) > 200:
@@ -173,10 +193,18 @@ def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
             st.markdown(
                 f"**{ver} · {r['Empresa']}** — puesto **{pos}** de {len(cand)}  \n"
                 f"Prioridad **{r['Prioridad']:.2f}** = {r['Puntos por nota']:.2f} por nota (nota {r['Nota financiera']:.2f} × "
-                f"{listas.PESO_NOTA:.1f}) + {r['Puntos por precio']:.2f} por precio (posición {r['Precio (0-10)']:.1f}/10 × "
-                f"{listas.PESO_PRECIO:.1f})  \n"
+                f"{listas.PESO_NOTA_Q:.1f}) + {r['Puntos por cualitativo']:.2f} por cualitativo + {r['Puntos por precio']:.2f} por precio "
+                f"(posición {r['Precio (0-10)']:.1f}/10 × {listas.PESO_PRECIO:.1f})  \n"
                 f"Bloques del examen: {bloques}  \n"
                 f"{r['Motivo']}.")
+            q = cq.get(ver)
+            if q:
+                st.markdown(f"**Análisis cualitativo de Claude ({q.get('fecha')}) · nota {str(round(q.get('nota_cualitativa') or 0, 1)).replace('.', ',')}/10**  \n"
+                            f"{q.get('en_una_frase') or ''}  \n**Veredicto:** {q.get('veredicto') or '—'}")
+                if q.get("alertas"):
+                    st.markdown("**Alertas:** " + " · ".join(q["alertas"]))
+                st.caption("El dossier completo y las respuestas del examen, con su motivo, están en la ficha de la empresa (Negocio → Dossier "
+                           "y Valoración → Examen y nota).")
 
     a = st.columns([3, 1.4, 1])
     pick = a[0].multiselect("Añadir a una lista", list(out.index), placeholder="Elige empresas de la tabla…")

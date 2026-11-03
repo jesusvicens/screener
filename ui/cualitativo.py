@@ -105,6 +105,21 @@ def dossier_tab(T: str):
     k = f"dossier_{T}"
     st.session_state[k] = (storage.load(T) or {}).get("dossier", "")  # siempre lo guardado (cambios hechos fuera de la app)
     intro, secs = _secciones(st.session_state[k])
+    cand = st.session_state.get(f"cand_{T}") or {}
+    if not secs and cand.get("dossier"):
+        ci, cs = _secciones(cand["dossier"])
+        if cs:
+            st.info(f"**Análisis de Claude del {cand.get('fecha')}** (candidata analizada automáticamente; nota cualitativa "
+                    f"{str(round(cand.get('nota_cualitativa', 0), 1)).replace('.', ',')}/10). Veredicto: {cand.get('veredicto') or '—'}. Si escribes tu propio dossier abajo, "
+                    "sustituye a este.")
+            if cand.get("alertas"):
+                st.markdown("**Alertas:** " + " · ".join(cand["alertas"]))
+            _dossier_doc(ci, cs)
+            with st.expander("✏️ Escribir mi dossier (puedes partir del de Claude)"):
+                if st.button("Copiar el análisis de Claude al editor", key=f"dossier_copy_{T}"):
+                    st.session_state[f"dossier_ed_{T}"] = cand["dossier"]
+                _dossier_editor(T)
+            return
     if secs:
         _dossier_doc(intro, secs)
     else:

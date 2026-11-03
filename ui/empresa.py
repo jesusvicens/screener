@@ -48,6 +48,18 @@ def _saved(ticker: str) -> dict:
     return st.session_state[k]
 
 
+def _candidata(T: str) -> dict:
+    """Análisis cualitativo de Claude de esta empresa (si es una candidata analizada), una vez por sesión."""
+    k = f"cand_{T}"
+    if k not in st.session_state:
+        try:
+            from terminal import candidatas
+            st.session_state[k] = candidatas.load(T) or {}
+        except Exception:  # noqa: BLE001
+            st.session_state[k] = {}
+    return st.session_state[k]
+
+
 # ------------------------------------------------------------------ estado de los controles
 def _key(T, *parts):
     return "_".join([T, *map(str, parts)])
@@ -79,13 +91,17 @@ def _widget_defaults(T: str, saved: dict, sugg: dict) -> dict:
             v = (saved.get("supuestos_roic") or {}).get(scn, {}).get(fld)
             D[_key(T, "scr", scn, fld)] = (v * 100 if kind == "pct" else v) if v is not None else None
     answers = saved.get("examen") or {}
+    cand = st.session_state.get(f"cand_{T}") or {}
+    cand_ex = {} if any(answers.get(q[0]) is not None for q in E.QUESTIONS if q[1] in E.QUALITATIVE_BLOCKS) else (cand.get("examen") or {})
     for qid, _block, _t, opts in E.QUESTIONS:
         pts = answers.get(qid)
+        if pts is None and qid in cand_ex:   # propuesta del análisis de Claude hasta que guardes las tuyas
+            pts = cand_ex[qid]
         if pts is None and qid in sugg:
             pts = sugg[qid][0]
         D[_key(T, qid)] = opts[pts - 1] if pts else (E.NA if pts == 0 else "—")
     D[_key(T, "tesis")] = saved.get("notas", "")
-    D[_key(T, "cual_motivos")] = saved.get("cualitativo_motivos") or {}
+    D[_key(T, "cual_motivos")] = saved.get("cualitativo_motivos") or ((cand.get("motivos") or {}) if cand_ex else {})
     D[_key(T, "seguimiento")] = saved.get("seguimiento", "")
     rk = saved.get("riesgo") or {}
     tp = {**R.DEFAULT_TEST_PROBS, **(rk.get("test_probs") or {})}
@@ -237,6 +253,7 @@ def page():
     set_currency(fin.currency)
 
     saved = _saved(T)
+    _candidata(T)
     stats0 = A.history_stats(fin)
     sugg0 = E.suggestions(fin, stats0)
     _init_widgets(T, saved, sugg0)
@@ -668,6 +685,12 @@ def _tab_examen(T, ca):
     if na_fin >= 6:
         st.warning(f"{na_fin} de 21 preguntas financieras están en «No aplica» (típico de bancos y aseguradoras): "
                    "la nota financiera se apoya en pocas métricas, úsala con cautela.")
+    cand = st.session_state.get(f"cand_{T}") or {}
+    saved_q = any((_saved(T).get("examen") or {}).get(q[0]) is not None for q in E.QUESTIONS if q[1] in E.QUALITATIVE_BLOCKS)
+    if cand.get("examen") and not saved_q:
+        st.info(f"Las respuestas cualitativas son la **propuesta del análisis de Claude del {cand.get('fecha')}** (nota cualitativa "
+                f"{str(round(cand.get('nota_cualitativa', 0), 1)).replace('.', ',')}), con el motivo de cada una. Revísalas: al pulsar «Guardar análisis» pasan a ser tuyas "
+                "(y la empresa, a tus analizadas). El dossier completo está en Negocio → Dossier.")
     with st.expander("🤖 Rellenar el bloque cualitativo con Claude (usa tu plan, no la API)", expanded=not sc["cual_respondidas"]):
         st.markdown("1. Copia este texto (botón de copiar arriba a la derecha) y pégalo en un chat nuevo de Claude con la búsqueda web activada.\n"
                     "2. Cuando conteste, copia toda su respuesta y pégala abajo.\n"

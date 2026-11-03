@@ -103,6 +103,8 @@ def in_list(d: dict, grupo: str) -> list[str]:
 # ---------------------------------------------------------------- prioridad
 PESO_NOTA = 0.7
 PESO_PRECIO = 0.3
+# Con nota cualitativa (análisis de Claude o tuyo): 40 % financiera + 30 % cualitativa + 30 % precio.
+PESO_NOTA_Q, PESO_CUAL_Q = 0.4, 0.3
 
 
 def prioridad(df: pd.DataFrame) -> pd.Series:
@@ -124,9 +126,16 @@ def prioridad_detalle(df: pd.DataFrame) -> pd.DataFrame:
     nval = int(rf.notna().sum())
     mas_barata = (rf.rank(method="min") - 1) / max(nval - 1, 1)
     out = pd.DataFrame(index=df.index)
-    out["Puntos por nota"] = (PESO_NOTA * nota).round(2)
+    cual = pd.to_numeric(df["Nota cualitativa"], errors="coerce") if "Nota cualitativa" in df else None
+    if cual is not None:
+        # sin análisis cualitativo todavía: cuenta como término medio (5), igual que el precio sin dato
+        out["Puntos por nota"] = (PESO_NOTA_Q * nota).round(2)
+        out["Puntos por cualitativo"] = (PESO_CUAL_Q * cual.fillna(5.0)).round(2)
+    else:
+        out["Puntos por nota"] = (PESO_NOTA * nota).round(2)
+        out["Puntos por cualitativo"] = 0.0
     out["Puntos por precio"] = (PESO_PRECIO * barata).round(2)
-    out["Prioridad"] = (out["Puntos por nota"] + out["Puntos por precio"]).round(2)
+    out["Prioridad"] = (out["Puntos por nota"] + out["Puntos por cualitativo"] + out["Puntos por precio"]).round(2)
     out["Precio (0-10)"] = barata.round(1)
     motivos = []
     for i in df.index:
@@ -143,6 +152,9 @@ def prioridad_detalle(df: pd.DataFrame) -> pd.DataFrame:
                 if worst != best and bl[worst] < 8:
                     txt += f"; lo más flojo, {worst} ({bl[worst]:.1f})"
             partes.append(txt)
+        if cual is not None:
+            q = cual.get(i)
+            partes.append(f"cualitativa {q:.1f}/10" if pd.notna(q) else "sin análisis cualitativo todavía (cuenta 5)")
         if fiable.get(i, False):
             p = mas_barata.get(i)
             if rfcf.get(i) < 0:
