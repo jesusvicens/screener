@@ -47,6 +47,7 @@ class InvestorParams:
     n: int = 10                          # B8 horizonte
     mos: float = 0.15                    # B9 margen de seguridad
     g_lt: float = 0.04                   # B10 crecimiento a largo plazo (PIB nominal)
+    anos_2a_etapa: int = 10              # años que tarda el crecimiento del año 10 en bajar al de largo plazo (PER de salida)
     years_to_margin: int = 5             # B11
     rd_life: int = 5                     # ROIC!B30 vida útil del I+D capitalizado
     acciones_manual: float | None = None # acciones diluidas (M) si la SEC no da BPA (p. ej. varias clases de acciones)
@@ -105,29 +106,6 @@ def per_history(eps_df: pd.DataFrame) -> dict:
     return {"PER medio": float(s.mean()), "PER sin outliers": float(trimmed.mean()), "PER mínimo": float(s.min())}
 
 
-def buffettology(f: Financials, stats: dict, eps_df: pd.DataFrame, price: float | None, years: int = 10) -> dict:
-    """Tu modelo original de Buffettología: el valor contable crece a ROE × % retenido."""
-    y = f.years[-1]
-    bvps = _div(f.get("equity", y), f.get("shares_diluted", y))
-    roe = stats.get("roe5")
-    ret = eps_df["% reservas s/ B"].dropna().tail(5).mean() if "% reservas s/ B" in eps_df else None
-    per = per_history(eps_df)["PER sin outliers"]
-    if bvps is None or bvps <= 0 or roe is None or ret is None or pd.isna(ret):
-        return {}
-    g = roe * ret
-    bv_n = bvps * (1 + g) ** years
-    eps_n = bv_n * roe
-    out = {"VC por acción hoy": bvps, "ROE medio 5 años": roe, "% retenido medio 5 años": float(ret),
-           "Crecimiento del VC (ROE × retenido)": g, f"VC por acción año {years}": bv_n, f"BPA año {years}": eps_n,
-           "PER histórico sin outliers": per}
-    if per:
-        out[f"Precio año {years}"] = eps_n * per
-        if price:
-            out["Rentabilidad anual esperada"] = (eps_n * per / price) ** (1 / years) - 1
-    return out
-
-
-# ============================================================ ROIC
 def roic(f: Financials, rd_life: int = 5) -> pd.DataFrame:
     ys = f.years
     d: dict[str, list] = {k: [] for k in [
@@ -170,6 +148,115 @@ def roic(f: Financials, rd_life: int = 5) -> pd.DataFrame:
             d[k].append(v)
         ic_prev, nopat_prev, rd_asset_prev, icadj_prev = ic, nopat, rd_asset, icadj
     return pd.DataFrame(d, index=ys).T
+
+
+# ============================================================ ROIC operativo y reinversión (base de la valoración por ROIC)
+ROIC_TOPE = 1.0          # por encima, el negocio crece casi sin capital: (1 − g/ROIC) ≈ 1
+REINV_MIN = 0.10         # reinversión mínima (sobre el NOPAT) para que la valoración por ROIC tenga sentido
+
+
+def roic_operativo(f: Financials, rd_life: int = 5) -> tuple[pd.DataFrame, dict]:
+    """Capital invertido desde el lado operativo (lo que el negocio necesita, no cómo se financia: las recompras no lo
+    distorsionan) y, con él, ROIC normalizado, ROIC incremental, tasa de reinversión y el crecimiento que implican.
+
+    Capital invertido = circulante operativo (sin caja ni deuda) + inmovilizado material + fondo de comercio e intangibles
+    (+ el I+D capitalizado si pesa más del 3 % de las ventas). Reinversión neta = variación del capital invertido (incluye
+    adquisiciones, porque entran en el fondo de comercio).
+    """
+    ys = f.years
+    g = lambda k, y: f.get(k, y) or 0.0  # noqa: E731
+    rev5 = sum(g("revenue", y) for y in ys[-5:])
+    usa_rd = rev5 > 0 and sum(g("rnd", y) for y in ys[-5:]) > 0.03 * rev5
+    rd_hist: list[float] = []
+    asset = 0.0
+    rows: dict[str, list] = {k: [] for k in [
+        "Circulante operativo", "Inmovilizado material", "Fondo de comercio e intangibles", "Activo de I+D capitalizado",
+        "Capital invertido operativo", "EBIT", "Ajuste por I+D capitalizado", "Tipo efectivo", "NOPAT",
+        "ROIC (sobre capital medio)", "Reinversión neta (Δ capital)", "Tasa de reinversión", "ROIC incremental del año"]}
+    ic_prev = nop_prev = None
+    for y in ys:
+        rd = g("rnd", y)
+        rd_hist.append(rd)
+        am = sum(rd_hist[-rd_life:]) / rd_life
+        asset += rd - am
+        nwc = (g("current_assets", y) - g("cash_sti", y)) - (g("current_liabilities", y) - g("st_debt", y))
+        gw = f.get("_gw_int", y)
+        if gw is None:
+            gw = g("_goodwill", y) + g("_intangibles", y)
+        ic = nwc + g("ppe", y) + gw + (asset if usa_rd else 0.0)
+        tax = min(max(_div(f.get("taxes", y), f.get("pretax", y), 0.21) or 0.0, 0.0), 0.35)
+        adj = (rd - am) if usa_rd else 0.0
+        ebit = f.get("operating_income", y)
+        nop = (ebit + adj) * (1 - tax) if ebit is not None else None
+        ic_avg = ic if ic_prev is None else (ic + ic_prev) / 2
+        dic = (ic - ic_prev) if ic_prev is not None else None
+        vals = [nwc, g("ppe", y), gw, asset if usa_rd else None, ic, ebit, adj if usa_rd else None, tax, nop,
+                _div(nop, ic_avg) if (nop is not None and ic_avg > 0) else None, dic,
+                _div(dic, nop) if (dic is not None and nop and nop > 0) else None,
+                _div((nop - nop_prev) if (nop is not None and nop_prev is not None) else None, dic) if dic and dic > 0 else None]
+        for k, v in zip(rows, vals):
+            rows[k].append(v)
+        ic_prev, nop_prev = ic, nop
+    df = pd.DataFrame(rows, index=ys).T
+
+    # Resumen a 5 años
+    res: dict = {"usa_rd": usa_rd, "roic_norm": None, "roic_inc": None, "reinv": None, "g_impl": None, "g_nopat": None,
+                 "aplica": False, "motivo": "", "roic_salida": None, "capital": None}
+    if len(ys) < 6:
+        res["motivo"] = "Hacen falta al menos 6 años de cuentas."
+        return df, res
+    y5, L, B = ys[-5:], ys[-1], ys[-6]
+    IC = dict(zip(ys, rows["Capital invertido operativo"]))
+    NOP = dict(zip(ys, rows["NOPAT"]))
+    res["capital"] = IC[L]
+    if any(NOP[y] is None for y in y5 + [B]):
+        res["motivo"] = "Sin resultado operativo en algún año (bancos, aseguradoras…)."
+        return df, res
+    den = sum(IC[y] for y in y5)
+    nop5 = sum(NOP[y] for y in y5)
+    res["roic_norm"] = nop5 / den if den > 0 else None
+    dIC = IC[L] - IC[B]
+    res["roic_inc"] = (NOP[L] - NOP[B]) / dIC if dIC > 0 else None
+    res["reinv"] = dIC / nop5 if nop5 > 0 else None
+    if res["roic_inc"] is not None and res["reinv"] is not None:
+        res["g_impl"] = res["roic_inc"] * res["reinv"]
+    res["g_nopat"] = _cagr(NOP[L], NOP[B], 5)
+    # ROIC para el PER de salida: media del normalizado y del incremental (el incremental solo es muy sensible al periodo)
+    cands = [x for x in (res["roic_norm"], res["roic_inc"]) if x is not None]
+    if IC[L] <= 0 or den <= 0:
+        res["roic_salida"] = ROIC_TOPE   # capital negativo: crece con el dinero de clientes y proveedores
+    elif cands:
+        res["roic_salida"] = min(sum(cands) / len(cands), ROIC_TOPE)
+    # ¿Sirve la valoración por ROIC?
+    if IC[L] <= 0 or den <= 0:
+        res["motivo"] = "Capital invertido negativo: la financian clientes y proveedores, crece sin necesitar capital."
+    elif res["reinv"] is None or res["reinv"] < REINV_MIN:
+        res["motivo"] = f"Reinvierte menos del {REINV_MIN:.0%} de su NOPAT: crece casi sin capital."
+    elif res["roic_inc"] is None:
+        res["motivo"] = "El capital no ha crecido en 5 años: no hay ROIC incremental que medir."
+    elif res["roic_inc"] > ROIC_TOPE or (res["roic_norm"] or 0) > ROIC_TOPE:
+        res["motivo"] = "ROIC de más del 100 %: el capital es tan pequeño que la fórmula se vuelve muy sensible."
+    else:
+        res["aplica"] = True
+    return df, res
+
+
+def implied_perpetual_g(per: float | None, r: float, roic: float | None) -> float | None:
+    """Crecimiento a perpetuidad que implica un PER con la fórmula de Gordon: (1 − g/ROIC)(1+g)/(r − g) = PER."""
+    if not per or per <= 0:
+        return None
+    x = min(roic, ROIC_TOPE) if roic and roic > 0 else ROIC_TOPE
+    f = lambda g: (1 - g / x) * (1 + g) / (r - g) - per  # noqa: E731
+    lo, hi = -0.20, r - 1e-4
+    if f(lo) > 0 or f(hi) < 0:
+        return None
+    for _ in range(80):
+        mid = (lo + hi) / 2
+        if f(mid) > 0:
+            hi = mid
+        else:
+            lo = mid
+    return (lo + hi) / 2
 
 
 # ============================================================ Histórico y fase (Escenarios §2)
@@ -242,6 +329,12 @@ def history_stats(f: Financials) -> dict:
     else:
         phase = "Declive"
     s["phase"] = phase
+    try:
+        _df, rr = roic_operativo(f)
+    except Exception:  # noqa: BLE001
+        rr = {}
+    for k in ("roic_norm", "roic_inc", "reinv", "g_impl", "roic_salida"):
+        s[k] = rr.get(k)
     s["growth_series"] = dict(zip(ys[1:], growth))
     s["gm_series"] = dict(zip(ys, gm))
     s["om_series"] = dict(zip(ys, om))
@@ -267,14 +360,46 @@ STAT_LABELS = [
     ("cl_sales", "Pasivo circulante / ventas (último año)", "pct"),
     ("cyclical", "¿Señales de ciclicidad?", "bool"), ("recovery", "¿Señales de recuperación?", "bool"),
     ("phase", "Fase propuesta", "txt"),
+    ("roic_norm", "ROIC normalizado (5 años, capital operativo)", "pct"), ("roic_inc", "ROIC incremental (5 años)", "pct"),
+    ("reinv", "Tasa de reinversión (5 años)", "pct"), ("roic_salida", "ROIC para el PER de salida (media)", "pct"),
 ]
 
 
 # ============================================================ Escenarios (§3)
-def exit_per(g10: float, r: float, roe5: float | None) -> float:
-    g = min(g10, r - 0.03)
-    roe = max(roe5 if roe5 is not None else 0.0, r + 0.01)
-    return max(5.0, (1 - g / roe) * (1 + g) / (r - g))
+def exit_per(g10: float, r: float, roic: float | None, g_lt: float = 0.04, anos: int = 10) -> float:
+    """PER «justificado» en el año 10: lo que pagaría un comprador por todos los beneficios desde el año 11.
+
+    Dos etapas: el crecimiento del año 10 baja en línea recta hasta el de largo plazo en `anos` años y desde ahí se
+    mantiene para siempre (Gordon). Cada año se descuenta la reinversión que exige crecer: g / ROIC. Si el año 10 ya
+    crece menos que el largo plazo (escenarios malos), se mantiene ese crecimiento para siempre, como antes.
+    Con ROIC por debajo de r, crecer más resta valor y el PER baja. Mínimo 5x.
+    """
+    x = min(roic, ROIC_TOPE) if (roic is not None and roic > 0) else None
+    if x is None:
+        return 5.0
+    gl = min(g_lt, r - 0.02)
+    if g10 <= gl:
+        g = g10
+        reinv = (1 - g / x) if g > 0 else 1.0   # al decrecer no se cuenta capital liberado (prudente)
+        return max(5.0, reinv * (1 + g) / (r - g))
+    anos = max(1, int(anos))
+    v, E, df = 0.0, 1.0, 1.0
+    for t in range(1, anos + 1):
+        g = g10 + (gl - g10) * t / anos
+        E *= 1 + g
+        df /= 1 + r
+        v += E * (1 - g / x) * df
+    v += E * (1 + gl) * (1 - gl / x) / (r - gl) * df
+    return max(5.0, v)
+
+
+def roic_salida(stats: dict, r: float) -> float:
+    """ROIC con el que se calcula el PER de salida (media del normalizado y el incremental); si no se puede medir,
+    el ROE de 5 años con el suelo de antes."""
+    x = stats.get("roic_salida")
+    if x is not None:
+        return x
+    return max(stats.get("roe5") or 0.0, r + 0.01)
 
 
 # Tipos de cambio aproximados a $ (solo para saber el tamaño de la empresa al poner topes de crecimiento).
@@ -338,7 +463,7 @@ def propose_scenarios(stats: dict, params: InvestorParams, phase: str) -> dict[s
         sc[k]["g10"] = min(sc[k]["g10"], TOPE_G10.get(k, 0.12))
         sc[k]["gm"] = max(sc[k]["gm"], 0.0)
         sc[k]["om"] = min(sc[k]["om"], sc[k]["gm"])
-        sc[k]["per_exit"] = exit_per(sc[k]["g10"], params.r, stats.get("roe5"))
+        sc[k]["per_exit"] = exit_per(sc[k]["g10"], params.r, roic_salida(stats, params.r), params.g_lt, params.anos_2a_etapa)
     return sc
 
 
@@ -359,7 +484,7 @@ def merge_overrides(proposed: dict[str, dict], overrides: dict | None, params: I
             if v is not None and k in out[scn]:
                 out[scn][k] = float(v)
         if "per_exit" not in (vals or {}) or vals.get("per_exit") is None:
-            out[scn]["per_exit"] = exit_per(out[scn]["g10"], params.r, stats.get("roe5"))
+            out[scn]["per_exit"] = exit_per(out[scn]["g10"], params.r, roic_salida(stats, params.r), params.g_lt, params.anos_2a_etapa)
     return out
 
 
@@ -494,6 +619,214 @@ def project(f: Financials, stats: dict, sc: dict, params: InvestorParams) -> pd.
     return df
 
 
+# ============================================================ Valoración por ROIC: reinversión × rentabilidad
+ROIC_FIELDS = [("roic1", "ROIC incremental en el año 1", "pct"), ("roic10", "ROIC incremental en el año 10", "pct"),
+               ("reinv", "Tasa de reinversión (% del NOPAT)", "pct"), ("om", "Margen operativo", "pct"),
+               ("red_acc", "Reducción neta de acciones al año", "pct"),
+               ("per_exit", "PER de salida (justificado por fundamentales)", "x"), ("prob", "Probabilidad", "pct")]
+
+
+def propose_scenarios_roic(stats: dict, params: InvestorParams, phase: str) -> dict[str, dict]:
+    """Escenarios propuestos para la valoración por ROIC.
+
+    El crecimiento sale de g = ROIC incremental × tasa de reinversión. El ROIC incremental va bajando hacia r con los
+    años (la competencia erosiona los retornos). Base: el ROIC incremental de los últimos 5 años; Optimista: el mayor entre
+    el incremental y el normalizado; Adverso y Desastre: las nuevas inversiones acaban rindiendo menos que r. La reinversión es la de los últimos 5 años; la reducción neta de acciones, la de los últimos 5.
+    El margen operativo y las probabilidades, los mismos que la valoración por ventas.
+    """
+    r = params.r
+    clip = lambda x, lo, hi: min(max(x, lo), hi)  # noqa: E731
+    rn, ri = stats.get("roic_norm"), stats.get("roic_inc")
+    ri = ri if ri is not None else rn
+    rn = rn if rn is not None else ri
+    if ri is None:
+        ri = rn = r
+    ri, rn = clip(ri, 0.0, 0.60), clip(rn, 0.0, 0.60)
+    reinv = clip(stats.get("reinv") or 0.0, 0.0, 1.0)
+    red = clip(-(stats.get("share_chg5") or 0.0), -0.05, 0.08)
+    ventas = propose_scenarios(stats, params, phase)
+    # Base: lo que han rendido de verdad las inversiones de los últimos 5 años (ROIC incremental).
+    sc = {
+        "Optimista": {"roic1": max(ri, rn), "roic10": max(0.85 * max(ri, rn), r + 0.02), "reinv": reinv, "red_acc": red},
+        "Base": {"roic1": ri, "roic10": max((ri + r) / 2, r + 0.01), "reinv": reinv, "red_acc": red},
+        "Adverso": {"roic1": min(ri, rn), "roic10": max(r - 0.02, 0.0), "reinv": reinv, "red_acc": red / 2},
+        "Desastre": {"roic1": min(ri, rn) / 2, "roic10": max(r - 0.05, 0.0), "reinv": reinv, "red_acc": 0.0},
+    }
+    # tope de cordura: el crecimiento del año 1 que implican no pasa del tope por tamaño
+    tope = tope_por_tamano(stats.get("rev_last_usd"))
+    if reinv > 0:
+        for v in sc.values():
+            v["roic1"] = min(v["roic1"], tope / reinv)
+            v["roic10"] = min(v["roic10"], v["roic1"]) if v["roic1"] >= r else v["roic10"]
+    for k, v in sc.items():
+        v["om"] = ventas[k]["om"]
+        v["prob"] = ventas[k]["prob"]
+        v["per_exit"] = exit_per(v["roic10"] * v["reinv"], r, v["roic10"], params.g_lt, params.anos_2a_etapa)
+    return sc
+
+
+def merge_overrides_roic(proposed: dict[str, dict], overrides: dict | None, params: InvestorParams) -> dict[str, dict]:
+    out = deepcopy(proposed)
+    for scn, vals in (overrides or {}).items():
+        if scn not in out:
+            continue
+        for k, v in (vals or {}).items():
+            if v is not None and k in out[scn]:
+                out[scn][k] = float(v)
+        if (vals or {}).get("per_exit") is None:
+            o = out[scn]
+            o["per_exit"] = exit_per(o["roic10"] * o["reinv"], params.r, o["roic10"], params.g_lt, params.anos_2a_etapa)
+    return out
+
+
+PROJ_ROWS_ROIC = [
+    "ROIC incremental supuesto", "Tasa de reinversión", "Crecimiento de ventas", "Ventas", "Margen operativo %",
+    "Resultado operativo (EBIT)", "NOPAT", "Amortizaciones", "EBITDA", "Resultado no operativo", "Beneficio antes de impuestos",
+    "Impuestos", "Beneficio neto", "Margen neto %", "Acciones diluidas (M)", "BPA diluido", "Crecimiento del BPA",
+    "Dividendo por acción",
+    "— FLUJO DE CAJA —", "Remuneración en acciones", "Variación del circulante", "Flujo de caja operativo", "Capex",
+    "Flujo de caja libre", "Reinversión neta", "Capital sobrante (NOPAT − reinversión)", "PER supuesto para las recompras",
+    "Precio supuesto para las recompras", "Recompras para compensar la SBC", "Recompras netas", "Recompra de acciones",
+    "Dividendos pagados", "Variación de caja",
+    "— BALANCE —", "Caja e inversiones a corto", "Capital invertido operativo", "Activo circulante operativo",
+    "Activo no corriente", "Total activo", "Pasivo circulante", "Deuda a largo plazo", "Otros pasivos a largo plazo",
+    "Patrimonio neto", "Total pasivo y patrimonio",
+    "— RATIOS —", "ROIC sobre capital medio", "ROE", "Valor contable por acción", "Flujo de caja libre por acción",
+    "Variación de acciones en el año",
+]
+
+
+def project_roic(f: Financials, stats: dict, sc: dict, params: InvestorParams) -> pd.DataFrame:
+    """Proyección a 10 años en la que el crecimiento sale de reinvertir: g = ROIC incremental × tasa de reinversión.
+
+    Cada año: NOPAT → se reinvierte un % (capex por encima de las amortizaciones + circulante) → hace crecer las ventas
+    del año siguiente al ROIC incremental de ese año. Lo que no se reinvierte va a dividendos (payout histórico), a
+    recompras (primero las que compensan las acciones nuevas por remuneración en acciones, después la reducción neta
+    de acciones del escenario) y el resto a caja. El margen operativo va del actual al del escenario.
+    """
+    base = project(f, stats, {**sc, "g1": 0.0, "g10": 0.0, "gm": stats.get("gm5") or 0.0, "buyback": 0.0}, params)
+    c0 = base.iloc[:, 0]
+    L = f.years[-1]
+    Y = max(1, params.years_to_margin)
+    tax = stats["tax5"]
+    eps0 = f.get("eps_diluted", L) or 0.0
+    per_paid = _div(params.price, eps0) if (params.price and eps0 > 0) else sc["per_exit"]
+    om0 = _div(c0["Resultado operativo (EBIT)"], c0["Ventas"], 0.0) or 0.0
+
+    c = {k: c0.get(k) for k in PROJ_ROWS_ROIC if k in c0.index}
+    c["NOPAT"] = (c0["Resultado operativo (EBIT)"] or 0.0) * (1 - tax)
+    c["Margen operativo %"] = om0
+    ic_now = None
+    try:
+        _df, _rr = roic_operativo(f, params.rd_life)
+        ic_now = _rr.get("capital")
+    except Exception:  # noqa: BLE001
+        pass
+    c["Capital invertido operativo"] = ic_now
+    cols = {f"{L} real": c}
+    p = c
+    reinv_prev = sc["reinv"] * max(c["NOPAT"], 0.0)
+    for t in range(1, 11):
+        d: dict[str, float | None] = {}
+        roic_t = sc["roic1"] + (sc["roic10"] - sc["roic1"]) * (t - 1) / 9
+        d["ROIC incremental supuesto"] = roic_t
+        d["Tasa de reinversión"] = sc["reinv"]
+        # crecimiento del año: lo reinvertido el año anterior por lo que rinde
+        g = _div(roic_t * reinv_prev, max(p["NOPAT"] or 0.0, 1e-9), 0.0) if (p["NOPAT"] or 0) > 0 else 0.0
+        d["Crecimiento de ventas"] = g
+        d["Ventas"] = p["Ventas"] * (1 + g)
+        d["Margen operativo %"] = om0 + (sc["om"] - om0) * min(t / Y, 1)
+        d["Resultado operativo (EBIT)"] = d["Ventas"] * d["Margen operativo %"]
+        d["NOPAT"] = d["Resultado operativo (EBIT)"] * (1 - tax)
+        d["Amortizaciones"] = d["Ventas"] * stats["da_sales5"]
+        d["EBITDA"] = d["Resultado operativo (EBIT)"] + d["Amortizaciones"]
+        d["Resultado no operativo"] = d["Ventas"] * stats["nonop_sales5"]
+        d["Beneficio antes de impuestos"] = d["Resultado operativo (EBIT)"] + d["Resultado no operativo"]
+        d["Impuestos"] = max(d["Beneficio antes de impuestos"], 0) * tax
+        d["Beneficio neto"] = d["Beneficio antes de impuestos"] - d["Impuestos"]
+        d["Margen neto %"] = _div(d["Beneficio neto"], d["Ventas"])
+        # reinversión: capex por encima de amortizaciones + circulante
+        d["Remuneración en acciones"] = d["Ventas"] * stats["sbc_sales5"]
+        d["Activo circulante operativo"] = d["Ventas"] * stats["oca_sales"]
+        d["Pasivo circulante"] = d["Ventas"] * stats["cl_sales"]
+        d["Variación del circulante"] = -(d["Activo circulante operativo"] - p["Activo circulante operativo"]) + (d["Pasivo circulante"] - p["Pasivo circulante"])
+        d["Reinversión neta"] = sc["reinv"] * max(d["NOPAT"], 0.0)
+        reinv_prev = d["Reinversión neta"]
+        d["Capex"] = -max(d["Amortizaciones"] + d["Reinversión neta"] + d["Variación del circulante"], 0.0)
+        d["Flujo de caja operativo"] = d["Beneficio neto"] + d["Amortizaciones"] + d["Remuneración en acciones"] + d["Variación del circulante"]
+        d["Flujo de caja libre"] = d["Flujo de caja operativo"] + d["Capex"]
+        d["Capital sobrante (NOPAT − reinversión)"] = d["NOPAT"] - d["Reinversión neta"]
+        d["Capital invertido operativo"] = (p["Capital invertido operativo"] + d["Reinversión neta"]) if p.get("Capital invertido operativo") is not None else None
+        # reparto: dividendos → recompras (compensar SBC + reducción neta) → caja
+        d["Dividendos pagados"] = -d["Beneficio neto"] * stats["payout5"] * (1 if d["Beneficio neto"] > 0 else 0)
+        d["PER supuesto para las recompras"] = per_paid + (sc["per_exit"] - per_paid) * (t - 1) / 9
+        px = max(p["BPA diluido"] or 0, 0) * d["PER supuesto para las recompras"]
+        d["Precio supuesto para las recompras"] = px
+        disponible = max(d["Flujo de caja libre"] + d["Dividendos pagados"], 0.0)
+        sh0 = p["Acciones diluidas (M)"] or 0.0
+        if px > 0 and sh0 > 0:
+            compensar = min(d["Remuneración en acciones"], disponible)
+            netas = min(max(sc["red_acc"], 0.0) * sh0 * px, disponible - compensar)
+            d["Recompras para compensar la SBC"] = -compensar
+            d["Recompras netas"] = -netas
+            d["Acciones diluidas (M)"] = sh0 + (d["Remuneración en acciones"] - compensar - netas) / px
+            if sc["red_acc"] < 0:  # el escenario supone emisión neta (ampliaciones)
+                d["Acciones diluidas (M)"] = sh0 * (1 - sc["red_acc"])
+            d["Acciones diluidas (M)"] = max(d["Acciones diluidas (M)"], 0.9 * sh0)
+        else:
+            d["Recompras para compensar la SBC"] = d["Recompras netas"] = 0.0
+            d["Acciones diluidas (M)"] = sh0
+        d["Recompra de acciones"] = d["Recompras para compensar la SBC"] + d["Recompras netas"]
+        d["Variación de caja"] = d["Flujo de caja libre"] + d["Recompra de acciones"] + d["Dividendos pagados"]
+        d["BPA diluido"] = _div(d["Beneficio neto"], d["Acciones diluidas (M)"], 0.0)
+        d["Crecimiento del BPA"] = (d["BPA diluido"] / p["BPA diluido"] - 1) if (p["BPA diluido"] or 0) > 0 else 0.0
+        d["Dividendo por acción"] = max(d["BPA diluido"], 0) * stats["payout5"]
+        # balance
+        d["Caja e inversiones a corto"] = p["Caja e inversiones a corto"] + d["Variación de caja"]
+        d["Activo no corriente"] = p["Activo no corriente"] - d["Capex"] - d["Amortizaciones"]
+        d["Total activo"] = d["Caja e inversiones a corto"] + d["Activo circulante operativo"] + d["Activo no corriente"]
+        d["Deuda a largo plazo"] = p["Deuda a largo plazo"]
+        d["Otros pasivos a largo plazo"] = p["Otros pasivos a largo plazo"]
+        d["Patrimonio neto"] = p["Patrimonio neto"] + d["Beneficio neto"] + d["Remuneración en acciones"] + d["Recompra de acciones"] + d["Dividendos pagados"]
+        d["Total pasivo y patrimonio"] = d["Pasivo circulante"] + d["Deuda a largo plazo"] + d["Otros pasivos a largo plazo"] + d["Patrimonio neto"]
+        ica = ((p.get("Capital invertido operativo") or 0) + (d["Capital invertido operativo"] or 0)) / 2 if d["Capital invertido operativo"] is not None else None
+        d["ROIC sobre capital medio"] = _div(d["NOPAT"], ica) if ica and ica > 0 else None
+        d["ROE"] = _div(d["Beneficio neto"], (p["Patrimonio neto"] + d["Patrimonio neto"]) / 2, 0.0)
+        d["Valor contable por acción"] = _div(d["Patrimonio neto"], d["Acciones diluidas (M)"])
+        d["Flujo de caja libre por acción"] = _div(d["Flujo de caja libre"], d["Acciones diluidas (M)"])
+        d["Variación de acciones en el año"] = _div(d["Acciones diluidas (M)"], sh0, 1.0) - 1
+        cols[str(L + t)] = d
+        p = d
+    df = pd.DataFrame({k: [v.get(r) for r in PROJ_ROWS_ROIC] for k, v in cols.items()}, index=PROJ_ROWS_ROIC)
+    df.attrs["t"] = list(range(0, 11))
+    return df
+
+
+def sbc_tabla(f: Financials) -> pd.DataFrame:
+    """Remuneración en acciones año a año: cuánto cuesta y cuánto de las recompras se va en compensarla."""
+    rows: dict[str, list] = {k: [] for k in [
+        "Remuneración en acciones (SBC)", "SBC / ventas", "SBC / beneficio neto", "Flujo de caja libre declarado",
+        "Flujo de caja libre − SBC", "SBC / flujo de caja libre", "Recompras brutas", "   para compensar la SBC",
+        "   netas (por encima de la SBC)", "Acciones diluidas (M)", "Variación de acciones en el año"]}
+    prev = None
+    for y in f.years:
+        sbc = f.get("sbc", y)
+        fcf = (f.get("ocf", y) or 0) + (f.get("capex", y) or 0) if f.get("ocf", y) is not None else None
+        bb = f.get("buybacks", y)
+        bb = abs(bb) if bb is not None else None
+        sh = f.get("shares_diluted", y)
+        comp = min(sbc, bb) if (sbc is not None and bb is not None) else None
+        vals = [sbc, _div(sbc, f.get("revenue", y)), _div(sbc, f.get("net_income", y)) if (f.get("net_income", y) or 0) > 0 else None,
+                fcf, (fcf - sbc) if (fcf is not None and sbc is not None) else None,
+                _div(sbc, fcf) if fcf and fcf > 0 else None, bb, comp,
+                (bb - sbc) if (bb is not None and sbc is not None) else None, sh,
+                (_div(sh, prev) - 1) if (sh and prev) else None]
+        for k, v in zip(rows, vals):
+            rows[k].append(v)
+        prev = sh
+    return pd.DataFrame(rows, index=f.years).T
+
+
 # ============================================================ Valoración (§4–§8)
 @dataclass
 class Valuation:
@@ -507,10 +840,11 @@ class Valuation:
     warnings: list[str] = field(default_factory=list)
 
 
-def valuation(f: Financials, stats: dict, scenarios: dict[str, dict], params: InvestorParams) -> Valuation:
+def valuation(f: Financials, stats: dict, scenarios: dict[str, dict], params: InvestorParams, projector=None) -> Valuation:
     warnings = []
     P, r, n = params.price, params.r, max(1, min(10, int(params.n)))
-    projs = {k: project(f, stats, v, params) for k, v in scenarios.items()}
+    projector = projector or project
+    projs = {k: projector(f, stats, v, params) for k, v in scenarios.items()}
     psum = sum(v["prob"] for v in scenarios.values())
     if abs(psum - 1) > 1e-4:
         warnings.append(f"Las probabilidades suman {psum:.0%}, no 100%.")

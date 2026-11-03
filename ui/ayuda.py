@@ -56,22 +56,25 @@ Todas las cifras van en formato español (1.234,5) y cada gráfico indica su uni
 
 Cada dato sale de una etiqueta XBRL; si una empresa cambia de etiqueta con los años, se combinan. En «De qué etiqueta XBRL sale cada dato» puedes comprobar el origen.
 """,
-    "eps": """
-**Para qué sirve:** tu hoja «Modelo EPS»: la historia del BPA, el PER, el dividendo y el valor contable por acción, y su proyección en el escenario base.
-
-- **Rentabilidad (BPA/precio):** la inversa del PER; lo que «rinde» la acción si todo el beneficio fuese tuyo.
-- **% reservas s/ B:** la parte del beneficio que la empresa no reparte y reinvierte.
-- **Control histórico del PER:** media, media sin el mejor y el peor año, y mínimo. Útil para no pagar múltiplos de euforia.
-- **Buffettología:** tu modelo original. El valor contable crece al ritmo ROE × % retenido; el BPA futuro es ese valor contable × ROE y el precio futuro, ese BPA × el PER histórico.
-""",
     "roic": """
-**Para qué sirve:** medir cuánto gana la empresa por cada dólar que tiene invertido en el negocio, independientemente de cómo se financie.
+**Para qué sirve:** ver cómo genera y reinvierte capital la empresa. Es la base de la valoración por ROIC y sirve para comprobar si el crecimiento que supones en la valoración por ventas es creíble.
 
-- **Capital invertido** = deuda a largo plazo + patrimonio − caja.
-- **NOPAT** = resultado operativo × (1 − tipo impositivo efectivo).
-- **ROIC** = NOPAT / capital invertido medio. Por encima del 15 % sostenido suele indicar ventaja competitiva.
-- **ROIC incremental:** lo que rinde el capital *nuevo* que se invierte cada año. Es lo que importa para el futuro.
-- **ROIC ajustado por I+D:** trata el I+D como una inversión que se amortiza en X años (lo eliges arriba), en lugar de un gasto.
+- **Capital invertido operativo** = circulante operativo (sin caja ni deuda) + inmovilizado + fondo de comercio e intangibles (+ I+D capitalizado si pesa). Se mide desde el lado operativo para que las recompras no lo distorsionen.
+- **ROIC normalizado:** NOPAT de 5 años / capital de 5 años. Lo que rinde el negocio.
+- **ROIC incremental:** ΔNOPAT / Δcapital en 5 años. Lo que rinden las inversiones **nuevas**. Si está por debajo de tu r, crecer no crea valor aunque el ROIC histórico sea alto.
+- **Tasa de reinversión:** la parte del NOPAT que vuelve al negocio. **g = ROIC incremental × reinversión.**
+- **Remuneración en acciones:** ya es gasto, pero no sale de caja; las recompras primero la compensan. Mira cuánto de las recompras es neto.
+- **Opciones vivas:** dilución ya comprometida, mayor cuanto más sube la acción.
+""",
+    "val_roic": """
+**Para qué sirve:** valorar la empresa por cómo reinvierte. El crecimiento no es un supuesto libre: sale de **cuánto reinvierte × lo que rinde esa reinversión**. Crecer cuesta capital, y ese capital deja de ir a recompras, dividendos o caja.
+
+- **ROIC incremental año 1 → año 10:** lo que rinden las inversiones nuevas; baja hacia r con los años porque la competencia erosiona los retornos.
+- **Tasa de reinversión:** % del NOPAT que vuelve al negocio (capex por encima de las amortizaciones + circulante).
+- **Reducción neta de acciones:** la que consigues después de compensar la remuneración en acciones.
+- **Margen operativo:** se mantiene como supuesto aparte; si mejora, el beneficio crece sin capital.
+
+La principal sigue siendo la valoración por ventas. Si las dos se separan mucho, mira por qué: suele ser que el crecimiento por ventas exige más capital del que reinvierte la empresa.
 """,
     "esc_1": """
 **Parámetros del inversor.** Todo lo demás depende de estos números.
@@ -80,7 +83,8 @@ Cada dato sale de una etiqueta XBRL; si una empresa cambia de etiqueta con los a
 - **Rentabilidad exigida r:** lo que esperas ganar con tu mejor alternativa. Sin prima de riesgo: el riesgo va en los escenarios.
 - **Horizonte n:** en cuántos años mides el resultado.
 - **Margen de seguridad:** la distancia mínima que quieres entre valor estimado y precio.
-- **Crecimiento a largo plazo:** el ritmo de madurez (≈ PIB nominal).
+- **Crecimiento a perpetuidad:** el ritmo de madurez (≈ PIB nominal), el que se supone para siempre en el PER de salida.
+- **Años de la 2.ª etapa:** lo que tarda el crecimiento del año 10 en bajar hasta el de largo plazo.
 - **Años hasta márgenes:** cuánto tardan los márgenes en pasar del último real al del escenario.
 - **Fase:** la propone una regla (crecimiento de ventas de 3 años, ciclicidad, recuperación); puedes cambiarla.
 """,
@@ -90,7 +94,7 @@ Cada dato sale de una etiqueta XBRL; si una empresa cambia de etiqueta con los a
 - **Crecimiento año 1 → año 10:** las ventas pasan en línea recta de uno a otro.
 - **Márgenes:** el bruto y el operativo a los que llega la empresa.
 - **Recompras:** qué parte del flujo de caja libre se dedica a comprar acciones propias.
-- **PER de salida:** si lo dejas vacío, se calcula el PER «justificado»: (1 − g/ROE) × (1 + g) / (r − g).
+- **PER de salida:** si no lo tocas, se calcula el PER «justificado» en dos etapas (el crecimiento del año 10 baja hasta el de largo plazo y después es perpetuo), descontando la reinversión g / ROIC.
 - **Probabilidades:** deben sumar 100 %.
 """,
     "esc_4": """

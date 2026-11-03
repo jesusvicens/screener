@@ -64,6 +64,7 @@ def _widget_defaults(T: str, saved: dict, sugg: dict) -> dict:
     D[_key(T, "glt")] = p.g_lt * 100
     D[_key(T, "ytm")] = int(p.years_to_margin)
     D[_key(T, "rdl")] = int(p.rd_life)
+    D[_key(T, "a2e")] = int(p.anos_2a_etapa)
     D[_key(T, "accm")] = p.acciones_manual
     D[_key(T, "patr")] = p.patrimonio
     D[_key(T, "imp")] = p.importe
@@ -73,6 +74,10 @@ def _widget_defaults(T: str, saved: dict, sugg: dict) -> dict:
         for fld, _lbl, kind in A.SCENARIO_FIELDS:
             v = (saved.get("supuestos") or {}).get(scn, {}).get(fld)
             D[_key(T, "sc", scn, fld)] = (v * 100 if kind == "pct" else v) if v is not None else None
+    for scn in A.SCENARIOS:
+        for fld, _lbl, kind in A.ROIC_FIELDS:
+            v = (saved.get("supuestos_roic") or {}).get(scn, {}).get(fld)
+            D[_key(T, "scr", scn, fld)] = (v * 100 if kind == "pct" else v) if v is not None else None
     answers = saved.get("examen") or {}
     for qid, _block, _t, opts in E.QUESTIONS:
         pts = answers.get(qid)
@@ -131,6 +136,7 @@ def _work_from_widgets(T: str) -> dict:
     price = s.get(_key(T, "price"))
     params = {"r": s[_key(T, "r")] / 100, "n": int(s[_key(T, "n")]), "mos": s[_key(T, "mos")] / 100,
               "g_lt": s[_key(T, "glt")] / 100, "years_to_margin": int(s[_key(T, "ytm")]), "rd_life": int(s[_key(T, "rdl")]),
+              "anos_2a_etapa": int(s.get(_key(T, "a2e")) or 10),
               "acciones_manual": s.get(_key(T, "accm")), "patrimonio": s.get(_key(T, "patr")), "importe": s.get(_key(T, "imp")), "deuda_posicion": s.get(_key(T, "deu")) or 0.0}
     if price:
         params["price"] = price
@@ -141,6 +147,13 @@ def _work_from_widgets(T: str) -> dict:
             lp = s.get(_key(T, "scp", scn, fld))  # última propuesta mostrada en la casilla
             if v is not None and (lp is None or abs(v - lp) > 1e-6):
                 sup.setdefault(scn, {})[fld] = v / 100 if kind == "pct" else v
+    sup_r = {}
+    for scn in A.SCENARIOS:
+        for fld, _lbl, kind in A.ROIC_FIELDS:
+            v = s.get(_key(T, "scr", scn, fld))
+            lp = s.get(_key(T, "scrp", scn, fld))
+            if v is not None and (lp is None or abs(v - lp) > 1e-6):
+                sup_r.setdefault(scn, {})[fld] = v / 100 if kind == "pct" else v
     ans = {}
     for qid, _b, _t, opts in E.QUESTIONS:
         v = s.get(_key(T, qid))
@@ -149,7 +162,7 @@ def _work_from_widgets(T: str) -> dict:
         elif v == E.NA:
             ans[qid] = 0
     fase = s.get(_key(T, "fase"))
-    return {"params": params, "precio_manual": bool(price), "supuestos": sup, "examen": ans,
+    return {"params": params, "precio_manual": bool(price), "supuestos": sup, "supuestos_roic": sup_r, "examen": ans,
             "fase": None if fase in (None, "(propuesta)") else fase,
             "notas": s.get(_key(T, "tesis"), ""), "seguimiento": s.get(_key(T, "seguimiento"), ""),
             "riesgo": _risk_inputs(T), "cualitativo_motivos": s.get(_key(T, "cual_motivos"), {})}
@@ -231,7 +244,7 @@ def page():
     _persist_widgets(T)
     ca = pipeline.analyze(meta, fin, hist, saved=work, auto_financial_answers=False)
     if not ca.params.price:
-        st.warning("No he podido obtener la cotización. Escribe el precio a mano en «Escenarios y valoración» para valorar.")
+        st.warning("No he podido obtener la cotización. Escribe el precio a mano en «Valoración por ventas» para valorar.")
 
     _header(ca)
     if saved and not st.session_state.get(f"od_sync_{T}"):  # informe de OneDrive al día (en segundo plano, una vez por sesión)
@@ -266,6 +279,11 @@ def page():
         st.markdown("---")
         (_tab_informes_eu if eu else _tab_filings)(ca)
 
+    def _bandas():
+        from ui import bandas
+        bandas.tab(T, ca)
+        _per_control(ca)
+
     def _examen():
         _tab_examen(T, ca)
         from ui import cualitativo
@@ -286,13 +304,14 @@ def page():
             (":material/dashboard: Resumen", lambda: _tab_resumen(ca)),
             (":material/show_chart: Histórico", lambda: _tab_historico(T, ca)),
             (":material/table_chart: Estados financieros", lambda: _tab_estados(ca)),
-            (":material/trending_up: ROIC", lambda: _tab_roic(T, ca)),
-            (":material/checklist: Examen y nota", _examen),
         ],
+        # Valoración, en orden: ¿merece la pena? (nota) → ¿cómo genera y reinvierte capital? (ROIC) → ¿cuánto vale?
         ":material/balance: Valoración": [
-            (":material/calculate: Modelo BPA", lambda: _tab_eps(ca)),
-            (":material/stacked_line_chart: Bandas y sensibilidad", _mod("bandas", T, ca)),
-            (":material/balance: Escenarios y valoración", lambda: _tab_escenarios(T, ca)),
+            (":material/checklist: Examen y nota", _examen),
+            (":material/trending_up: ROIC y reinversión", lambda: _tab_roic(T, ca)),
+            (":material/balance: Valoración por ventas", lambda: _tab_escenarios(T, ca)),
+            (":material/savings: Valoración por ROIC", lambda: _tab_val_roic(T, ca)),
+            (":material/stacked_line_chart: Bandas y sensibilidad", _bandas),
             (":material/warning: Riesgo", lambda: _tab_riesgo(T, ca)),
         ],
         ":material/push_pin: Seguimiento": [
@@ -436,7 +455,7 @@ def _header(ca: pipeline.CompanyAnalysis):
         mos = v.value["Margen de seguridad al precio actual"]
         rent = v.value["Rentabilidad anual implícita en la media"]
         cols[5].metric("Valor estimado", f'{num(v.value["Valor estimado hoy = E[VF] / (1+r)^n"], 2)} {cur()}',
-                       help="Valor por acción hoy según tus escenarios (pestaña «Escenarios y valoración»).")
+                       help="Valor por acción hoy según tus escenarios (pestaña «Valoración por ventas»).")
         cols[6].metric("Margen seg.", pct(mos), "a favor" if (mos or 0) > 0 else "en contra",
                        delta_color="normal" if (mos or 0) > 0 else "inverse", delta_arrow="off",
                        help="Cuánto por debajo del valor estimado cotiza. Positivo = cotiza por debajo del valor.")
@@ -642,7 +661,7 @@ def _tab_examen(T, ca):
     cols[0].metric("Nota final", f"{sc['final']:.2f}")
     cols[1].metric("Cualitativa", f"{sc['cualitativa']:.2f}", f"{sc['cual_respondidas']}/20 respondidas")
     cols[2].metric("Financiera", f"{sc['financiera']:.2f}")
-    cols[3].metric("Nota / 10 (Modelo EPS)", f"{sc['final'] / 10:.3f}")
+    cols[3].metric("Nota / 10", f"{sc['final'] / 10:.3f}")
     st.caption("Las respuestas financieras vienen propuestas con 10 años de datos y criterios de Buffett (debajo de cada una ves el cálculo). "
                "Cámbialas si no estás de acuerdo. Sin responder = 0 puntos, como en tu Excel; «No aplica» no cuenta en la media del bloque.")
     na_fin = sum(sc["blocks"][b]["na"] for b in E.FINANCIAL_BLOCKS)
@@ -725,56 +744,219 @@ def _tab_estados(ca):
         st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
-def _tab_eps(ca):
-    explica("eps")
-    st.markdown("## Modelo EPS · histórico")
-    df = ca.eps_df.copy()
-    show_cols_table(df)
-    if not df["Precio medio"].notna().any():
+def _per_control(ca):
+    """El PER de cada año y su control histórico (antes en «Modelo BPA»)."""
+    st.markdown("## Control histórico del PER")
+    df = ca.eps_df
+    if "PER" not in df or not df["PER"].notna().any():
         st.caption("Sin histórico de precios: no puedo calcular el PER de cada año.")
-    else:
-        st.caption("Precio medio = media de los cierres diarios de cada ejercicio fiscal (ajustados por splits).")
-    if ca.val:
-        st.markdown("## Proyección (escenario base)")
-        base = ca.val.projections["Base"]
-        keep = ["BPA diluido", "Crecimiento del BPA", "Dividendo por acción", "Ventas", "Crecimiento de ventas", "Beneficio neto",
-                "Margen neto %", "Acciones diluidas (M)", "Valor contable por acción", "ROE"]
-        show_rows_table(base.loc[keep], kinds={"Ventas": "m", "Beneficio neto": "m", "Acciones diluidas (M)": "m"},
-                        bold={"BPA diluido", "Ventas", "Beneficio neto"})
-    c1, c2 = st.columns(2)
+        return
+    c1, c2 = st.columns([1, 2])
     with c1:
-        st.markdown("## Control histórico del PER")
-        kv_table(A.per_history(ca.eps_df))
+        kv_table(A.per_history(df))
     with c2:
-        st.markdown("## Buffettología (tu modelo original)")
-        b = A.buffettology(ca.fin, ca.stats, ca.eps_df, ca.params.price)
-        if b:
-            kv_table({k: v for k, v in b.items()})
-        else:
-            st.caption("No aplicable (patrimonio negativo o sin datos).")
+        show_cols_table(df)
+    st.caption("Precio medio = media de los cierres diarios de cada ejercicio fiscal (ajustados por splits). «PER sin outliers»: "
+               "la media sin el mejor y el peor año. Útil para no pagar múltiplos de euforia.")
 
 
 def _tab_roic(T, ca):
     explica("roic")
+    rr, r_ = ca.roic_res or {}, ca.params.r
     st.number_input("Vida útil del I+D capitalizado (años)", 1, 10, key=_key(T, "rdl"))
-    st.markdown("## ROIC y capital invertido")
-    st.caption("Capital invertido = deuda a largo plazo + patrimonio neto − caja e inversiones a corto. NOPAT = EBIT × (1 − tipo efectivo).")
-    show_rows_table(ca.roic_df, kinds={"Crecimiento del NOPAT ($)": "m", "Gasto en I+D": "m", "EBIT": "m", "EBIT ajustado": "m",
-                                       "NOPAT": "m", "NOPAT ajustado": "m", "Activo de I+D capitalizado": "m",
-                                       "Amortización del I+D capitalizado": "m", "Ajuste al EBIT": "m"}, bold={"Capital invertido (fin de año)", "NOPAT", "ROIC", "ROIC incremental", "ROIC ajustado (I+D capitalizado)"})
+    st.markdown("## ROIC y reinversión (últimos 5 años)")
+    c = st.columns(5)
+    c[0].metric("ROIC normalizado", pct(rr.get("roic_norm")), help="NOPAT de 5 años / capital invertido operativo de 5 años: lo que rinde el negocio.")
+    c[1].metric("ROIC incremental", pct(rr.get("roic_inc")),
+                f"{'por debajo' if (rr.get('roic_inc') is not None and rr['roic_inc'] < r_) else 'por encima'} de tu r ({pct(r_)})" if rr.get("roic_inc") is not None else None,
+                delta_color="normal" if (rr.get("roic_inc") or 0) >= r_ else "inverse", delta_arrow="off",
+                help="ΔNOPAT / Δcapital invertido en 5 años: lo que rinden las inversiones NUEVAS. Es lo que decide si crecer crea valor.")
+    c[2].metric("Tasa de reinversión", pct(rr.get("reinv")), help="Δcapital invertido / NOPAT de 5 años: la parte del beneficio operativo que vuelve al negocio.")
+    c[3].metric("g = ROIC incremental × reinversión", pct(rr.get("g_impl")), f"real {pct(rr.get('g_nopat'))} (NOPAT, 5 años)",
+                delta_color="off", delta_arrow="off", help="El crecimiento que «pagan» sus inversiones, frente al que ha tenido de verdad.")
+    c[4].metric("ROIC para el PER de salida", pct(rr.get("roic_salida")),
+                help="Media del normalizado y el incremental (máximo 100 %). Es el que usan las dos valoraciones para el PER de salida.")
+    if rr.get("usa_rd"):
+        st.caption("El I+D pesa más del 3 % de las ventas: se trata como una inversión (activo que se amortiza en la vida útil de arriba), no como gasto.")
+    if rr.get("aplica"):
+        st.markdown("<span class='pill ok'>La valoración por ROIC se puede aplicar</span>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<span class='pill am'>Valoración por ROIC: no aplica</span> {rr.get('motivo', '')} Se usa la valoración por ventas.",
+                    unsafe_allow_html=True)
+    if rr.get("roic_inc") is not None and rr.get("roic_norm") is not None and rr["roic_inc"] < r_ <= rr["roic_norm"]:
+        st.warning(f"El negocio rinde un {pct(rr['roic_norm'])}, pero lo invertido en los últimos 5 años rinde un {pct(rr['roic_inc'])}, menos que tu "
+                   f"r ({pct(r_)}): crecer así no crea valor. ¿Son inversiones que aún no han madurado o retornos que se agotan?")
+    st.markdown("## Capital invertido operativo y ROIC")
+    st.caption("Capital invertido = circulante operativo (sin caja ni deuda) + inmovilizado material + fondo de comercio e intangibles"
+               + (" + I+D capitalizado" if rr.get("usa_rd") else "") + ". NOPAT = EBIT × (1 − tipo efectivo). Desde el lado operativo, las recompras "
+               "(que bajan el patrimonio) no distorsionan el capital.")
+    if ca.roic_op_df is not None:
+        show_rows_table(ca.roic_op_df, kinds={"Tipo efectivo": "pct", "ROIC (sobre capital medio)": "pct", "Tasa de reinversión": "pct",
+                                              "ROIC incremental del año": "pct"},
+                        bold={"Capital invertido operativo", "NOPAT", "ROIC (sobre capital medio)"})
+        st.caption("El ROIC incremental de un solo año es muy ruidoso; el de arriba usa 5 años.")
+
+    st.markdown("## Remuneración en acciones y recompras")
+    st.caption("La remuneración en acciones (SBC) ya es gasto en la cuenta de resultados, pero no sale de caja: el flujo de caja libre la suma de vuelta. "
+               "Cada año la empresa emite acciones para pagarla y las recompras primero tienen que absorberlas: el número de acciones solo baja por "
+               "lo que se recompra por encima de la SBC.")
+    sb = A.sbc_tabla(ca.fin)
+    y5 = ca.fin.years[-5:]
+    tot = lambda row: sum(x for x in sb.loc[row, y5] if x is not None and x == x)  # noqa: E731
+    sbc5, fcf5, bb5 = tot("Remuneración en acciones (SBC)"), tot("Flujo de caja libre declarado"), tot("Recompras brutas")
+    sh = ca.fin.get("shares_diluted", ca.fin.years[-1])
+    mcap = (ca.params.price * sh) if (ca.params.price and sh) else None
+    c = st.columns(4)
+    c[0].metric("SBC / flujo de caja libre (5 años)", pct(sbc5 / fcf5) if fcf5 > 0 else "—", help="Parte del flujo de caja libre que no es del accionista.")
+    c[1].metric("Recompras que solo compensan la SBC", pct(min(sbc5 / bb5, 1.0)) if bb5 > 0 else "—")
+    c[2].metric("Variación anual de acciones (5 años)", pct(ca.stats.get("share_chg5")), help="Neta: recompras menos acciones nuevas. Negativa = recompra neta.")
+    sbc_l = ca.fin.get("sbc", ca.fin.years[-1])
+    c[3].metric("SBC / capitalización", pct(sbc_l / mcap) if (sbc_l and mcap) else "—", help="Lo que cuesta cada año al accionista, sobre el valor de la empresa.")
+    show_rows_table(sb, kinds={"SBC / ventas": "pct", "SBC / beneficio neto": "pct", "SBC / flujo de caja libre": "pct",
+                               "Acciones diluidas (M)": "m", "Variación de acciones en el año": "pct"},
+                    bold={"Remuneración en acciones (SBC)", "Flujo de caja libre − SBC", "   netas (por encima de la SBC)"},
+                    indent={"   para compensar la SBC", "   netas (por encima de la SBC)"})
+
+    st.markdown("## Opciones y acciones restringidas ya concedidas")
+    op = None
+    if ca.meta.get("cik"):
+        try:
+            from terminal import opciones
+            op = opciones.opciones_vivas(sec.company_facts(ca.meta["cik"]), sh, ca.params.price, ca.fin.period_end.get(ca.fin.years[-1]))
+        except Exception:  # noqa: BLE001
+            op = None
+    if not op:
+        st.caption("La SEC no da este desglose en su resumen (muchas empresas lo separan por tipo de instrumento): está en la nota de "
+                   "remuneración en acciones del 10-K, en «Documentos». Empresas europeas: en el informe anual.")
+    else:
+        c = st.columns(5)
+        c[0].metric("Opciones vivas", f"{num((op.get('opciones') or 0) / 1e6, 2)} M",
+                    f"ejercicio medio {num(op.get('precio_ejercicio'), 2)} {cur()}" if op.get("precio_ejercicio") else None, delta_color="off", delta_arrow="off")
+        c[1].metric("Acciones restringidas pendientes", f"{num((op.get('rsu') or 0) / 1e6, 2)} M")
+        c[2].metric("Peso sobre las acciones", pct(op.get("peso")), help="Opciones + acciones restringidas / acciones diluidas («overhang»).")
+        c[3].metric("Dilución neta al precio de hoy", pct(op.get("dilucion_neta")),
+                    help="Método de autocartera: opciones × (precio − ejercicio) / precio. Crece si la acción sube.")
+        c[4].metric("Concesiones del año / acciones", pct(op.get("burn_rate")), help="Ritmo anual de concesiones («burn rate»).")
+        st.caption(f"Último 10-K ({op.get('opciones_fecha') or op.get('rsu_fecha')}). Su gasto ya está en la cuenta de resultados; lo que no recoge es "
+                   "la dilución al ejercerlas, que es mayor cuanto más sube la cotización. Las acciones diluidas solo cuentan las que están en "
+                   "dinero al precio medio del año.")
+    with st.expander("ROIC sobre capital financiero (método anterior: deuda + patrimonio − caja)"):
+        show_rows_table(ca.roic_df, kinds={"Crecimiento del NOPAT ($)": "m", "Gasto en I+D": "m", "EBIT": "m", "EBIT ajustado": "m",
+                                           "NOPAT": "m", "NOPAT ajustado": "m", "Activo de I+D capitalizado": "m",
+                                           "Amortización del I+D capitalizado": "m", "Ajuste al EBIT": "m"},
+                        bold={"Capital invertido (fin de año)", "NOPAT", "ROIC", "ROIC incremental", "ROIC ajustado (I+D capitalizado)"})
+
+
+def _tab_val_roic(T, ca):
+    explica("val_roic")
+    rr, r_ = ca.roic_res or {}, ca.params.r
+    V = "Valor estimado hoy = E[VF] / (1+r)^n"
+    vv, vr = ca.val, ca.val_roic
+    c = st.columns(4)
+    c[0].metric("Precio", f"{num(ca.params.price, 2)} {cur()}")
+    c[1].metric("Valor por ventas (principal)", f"{num(vv.value.get(V), 2)} {cur()}" if (vv and vv.value) else "—",
+                pct(vv.value.get("Margen de seguridad al precio actual")) if (vv and vv.value) else None, delta_arrow="off")
+    c[2].metric("Valor por ROIC", f"{num(vr.value.get(V), 2)} {cur()}" if (vr and vr.value) else "—",
+                pct(vr.value.get("Margen de seguridad al precio actual")) if (vr and vr.value) else None, delta_arrow="off")
+    if vv and vr and vv.value and vr.value and vv.value.get(V):
+        d = vr.value[V] / vv.value[V] - 1
+        c[3].metric("Diferencia", pct(d), help="Si se separan mucho: el crecimiento que supones por ventas exige más (o menos) capital del que "
+                    "reinvierte la empresa, o los márgenes no cuadran con su ROIC.", delta_arrow="off")
+    if not rr.get("aplica"):
+        st.warning(f"**No aplica:** {rr.get('motivo', '')} El resultado de abajo sirve solo como contraste.")
+    st.caption("Usa los parámetros de «Valoración por ventas» (precio, r, horizonte, crecimiento a largo plazo, años de la 2.ª etapa). La valoración "
+               "principal —la que va a tu cartera, al riesgo y al screener— es la de ventas.")
+
+    st.markdown("## Escenarios")
+    st.caption("Crecimiento de cada año = ROIC incremental (va en línea recta del año 1 al 10) × tasa de reinversión. Lo que no se reinvierte va a "
+               "dividendos (payout histórico), a recompras —primero las que compensan la SBC y después la reducción neta de acciones que pongas— y "
+               "el resto a caja. Porcentajes en %.")
+    if st.button("↺ Volver a las propuestas", key=_key(T, "scr_reset")):
+        for scn in A.SCENARIOS:
+            for fld, _l, _k in A.ROIC_FIELDS:
+                st.session_state[_key(T, "scr", scn, fld)] = None
+                st.session_state.pop(_key(T, "scrp", scn, fld), None)
+        st.rerun()
+    props = {}
+    for scn in A.SCENARIOS:
+        for fld, _lbl, kind in A.ROIC_FIELDS:
+            if fld == "per_exit":
+                o = ca.scenarios_roic.get(scn, {})
+                prop = A.exit_per(o.get("roic10", r_) * o.get("reinv", 0), r_, o.get("roic10"), ca.params.g_lt, ca.params.anos_2a_etapa)
+            else:
+                prop = ca.proposed_roic.get(scn, {}).get(fld, 0.0)
+            p_ui = prop * 100 if kind == "pct" else prop
+            props[(scn, fld)] = p_ui
+            k, kp = _key(T, "scr", scn, fld), _key(T, "scrp", scn, fld)
+            vcur, lp = st.session_state.get(k), st.session_state.get(kp)
+            if vcur is None or (lp is not None and abs(vcur - lp) <= 1e-6):
+                st.session_state[k] = p_ui
+                st.session_state[kp] = p_ui
+            elif lp is None:
+                st.session_state[kp] = p_ui
+    head = st.columns([2.2, 1, 1, 1, 1])
+    head[0].markdown("<span class='subtle'>Supuesto</span>", unsafe_allow_html=True)
+    for i, scn in enumerate(A.SCENARIOS):
+        head[i + 1].markdown(f"**{scn}**")
+    mine = []
+    for fld, lbl, kind in A.ROIC_FIELDS:
+        row = st.columns([2.2, 1, 1, 1, 1])
+        row[0].markdown(f"<div style='padding-top:.45rem'>{lbl}</div>", unsafe_allow_html=True)
+        for i, scn in enumerate(A.SCENARIOS):
+            row[i + 1].number_input(lbl, step=0.5, format="%.2f", key=_key(T, "scr", scn, fld), label_visibility="collapsed")
+            vcur = st.session_state.get(_key(T, "scr", scn, fld))
+            if vcur is not None and abs(vcur - props[(scn, fld)]) > 1e-6:
+                mine.append(f"{scn} · {lbl}: **{vcur:.2f}** (propuesta {props[(scn, fld)]:.2f})")
+    if mine:
+        st.markdown("<span class='pill am'>Tus supuestos</span> " + " · ".join(mine), unsafe_allow_html=True)
+    rows = []
+    for scn in A.SCENARIOS:
+        o = ca.scenarios_roic.get(scn) or {}
+        if not o:
+            continue
+        rows.append({"Escenario": scn, "Crecimiento año 1": pct(o["roic1"] * o["reinv"]), "Crecimiento año 10": pct(o["roic10"] * o["reinv"]),
+                     "PER de salida": f"{o['per_exit']:.1f}x",
+                     "Crecimiento a perpetuidad que implica": pct(A.implied_perpetual_g(o["per_exit"], r_, o["roic10"]))})
+    if rows:
+        st.dataframe(pd.DataFrame(rows).set_index("Escenario"), width="stretch")
+        st.caption("PER de salida: dos etapas, con el ROIC incremental del año 10 (ver «¿De dónde sale el PER de salida?» en «Valoración por ventas»).")
+    psum = sum((ca.scenarios_roic.get(s) or {}).get("prob", 0) for s in A.SCENARIOS)
+    st.markdown(f"<span class='pill {'ok' if abs(psum - 1) < 1e-4 else 'ko'}'>Suma de probabilidades: {psum:.0%}</span>", unsafe_allow_html=True)
+    if not vr:
+        st.info("Necesito un precio, un BPA y el resultado operativo para valorar por ROIC.")
+        return
+    st.markdown("## Valor futuro por escenario")
+    show_rows_table(vr.by_scenario, bold={"Valor futuro (VF)", "Rentabilidad anual", "Probabilidad"})
+    st.markdown("## Test de cobertura · Valor estimado y margen de seguridad")
+    c1, c2 = st.columns(2)
+    with c1:
+        kv_table(vr.coverage)
+    with c2:
+        kv_table(vr.value)
+    st.markdown("## Proyecciones: cuenta de resultados, flujo de caja y balance")
+    for scn in A.SCENARIOS:
+        with st.expander(f"Proyección por ROIC · {scn}", expanded=(scn == "Base")):
+            show_rows_table(vr.projections[scn],
+                            kinds={"ROIC incremental supuesto": "pct", "Tasa de reinversión": "pct", "ROIC sobre capital medio": "pct",
+                                   "Variación del circulante": "m", "Variación de caja": "m", "Acciones diluidas (M)": "m"},
+                            bold={"Ventas", "NOPAT", "Beneficio neto", "BPA diluido", "Reinversión neta", "Capital sobrante (NOPAT − reinversión)",
+                                  "Flujo de caja libre", "Capital invertido operativo", "Patrimonio neto", "— FLUJO DE CAJA —", "— BALANCE —"})
 
 
 def _tab_escenarios(T, ca):
     st.markdown("## 1. Parámetros del inversor")
     explica("esc_1")
-    c = st.columns(7)
+    c = st.columns(8)
     c[0].number_input("Precio (vacío = mercado)", min_value=0.0, step=1.0, key=_key(T, "price"), placeholder=num(ca.params.price, 2))
     c[1].number_input("Rentabilidad exigida r (%)", 0.0, 50.0, step=0.5, key=_key(T, "r"))
     c[2].number_input("Horizonte n (años)", 1, 10, key=_key(T, "n"))
     c[3].number_input("Margen de seguridad (%)", 0.0, 90.0, step=1.0, key=_key(T, "mos"))
-    c[4].number_input("Crecimiento LP / PIB (%)", -5.0, 15.0, step=0.5, key=_key(T, "glt"))
-    c[5].number_input("Años hasta márgenes", 1, 10, key=_key(T, "ytm"))
-    c[6].selectbox("Fase", ["(propuesta)"] + A.PHASES, key=_key(T, "fase"))
+    c[4].number_input("Crecimiento a perpetuidad (%)", -5.0, 15.0, step=0.5, key=_key(T, "glt"),
+                      help="Crecimiento a largo plazo (≈ PIB nominal). Es el que se supone para siempre en el PER de salida.")
+    c[5].number_input("Años de la 2.ª etapa", 1, 30, key=_key(T, "a2e"),
+                      help="Años que tarda el crecimiento del año 10 en bajar hasta el de largo plazo (PER de salida en dos etapas).")
+    c[6].number_input("Años hasta márgenes", 1, 10, key=_key(T, "ytm"))
+    c[7].selectbox("Fase", ["(propuesta)"] + A.PHASES, key=_key(T, "fase"))
     if ca.fin.sources.get("eps_diluted") == {} or ca.params.acciones_manual:
         st.number_input("La SEC no da BPA de esta empresa (suele pasar con varias clases de acciones). Acciones diluidas en millones, as-converted:",
                         min_value=0.0, step=1.0, key=_key(T, "accm"))
@@ -802,7 +984,8 @@ def _tab_escenarios(T, ca):
     props = {}
     for scn in A.SCENARIOS:
         for fld, _lbl, kind in A.SCENARIO_FIELDS:
-            prop = ca.proposed[scn][fld] if fld != "per_exit" else A.exit_per(ca.scenarios[scn]["g10"], ca.params.r, ca.stats.get("roe5"))
+            prop = ca.proposed[scn][fld] if fld != "per_exit" else A.exit_per(ca.scenarios[scn]["g10"], ca.params.r, A.roic_salida(ca.stats, ca.params.r),
+                                                                              ca.params.g_lt, ca.params.anos_2a_etapa)
             p_ui = prop * 100 if kind == "pct" else prop
             props[(scn, fld)] = p_ui
             k, kp = _key(T, "sc", scn, fld), _key(T, "scp", scn, fld)
@@ -828,26 +1011,32 @@ def _tab_escenarios(T, ca):
     if mine:
         st.markdown("<span class='pill am'>Tus supuestos</span> " + " · ".join(mine), unsafe_allow_html=True)
     with st.expander("¿De dónde sale el PER de salida?"):
-        r_ = ca.params.r
-        roe5 = ca.stats.get("roe5") or 0.0
+        r_, glt, a2 = ca.params.r, ca.params.g_lt, ca.params.anos_2a_etapa
+        x = A.roic_salida(ca.stats, r_)
         rows = []
         for scn in A.SCENARIOS:
             g10 = ca.scenarios[scn]["g10"]
-            g = min(g10, r_ - 0.03)
-            roe = max(roe5, r_ + 0.01)
-            just = A.exit_per(g10, r_, ca.stats.get("roe5"))
-            rows.append({"Escenario": scn, "Crecimiento año 10": f"{g10:.1%}", "g usado = mín(g10, r − 3 pp)": f"{g:.1%}",
-                         "ROE usado = máx(ROE 5 años, r + 1 pp)": f"{roe:.1%}", "r": f"{r_:.1%}", "PER justificado": f"{just:.1f}x",
-                         "PER que se usa": f"{ca.scenarios[scn]['per_exit']:.1f}x"})
+            just = A.exit_per(g10, r_, x, glt, a2)
+            used = ca.scenarios[scn]["per_exit"]
+            rows.append({"Escenario": scn, "Crecimiento año 10": f"{g10:.1%}",
+                         "2.ª etapa": f"{g10:.1%} → {min(glt, r_ - 0.02):.1%} en {a2} años" if g10 > min(glt, r_ - 0.02) else f"se mantiene {g10:.1%}",
+                         "ROIC usado": f"{min(x, 1.0):.1%}", "PER justificado": f"{just:.1f}x", "PER que se usa": f"{used:.1f}x",
+                         "Crecimiento a perpetuidad que implica el PER que se usa": pct(A.implied_perpetual_g(used, r_, x))})
         st.dataframe(pd.DataFrame(rows).set_index("Escenario"), width="stretch")
         ph = A.per_history(ca.eps_df)
         eps0 = ca.fin.get("eps_diluted", ca.fin.years[-1])
         st.markdown(
-            "Es la fórmula de tu Excel: el **PER «justificado» por fundamentales** que pagaría un comprador racional en el año 10:\n\n"
-            "**PER = (1 − g / ROE) × (1 + g) / (r − g)**, con un mínimo de 5x.\n\n"
-            "- **g**: el crecimiento que la empresa mantendrá después del año 10 (el del año 10 del escenario, limitado a r − 3 pp para que la fórmula no se dispare).\n"
-            "- **ROE**: lo que rinde el beneficio que reinvierte; con un ROE alto necesita retener poco para crecer y puede repartir más, por eso vale más.\n"
-            "- **r**: tu rentabilidad exigida. Cuanto más exiges, menos pagas.\n\n"
+            "El **PER «justificado»** es lo que pagaría un comprador racional en el año 10 por todos los beneficios a partir del año 11. Se calcula "
+            "en **dos etapas**:\n\n"
+            f"1. **Segunda etapa:** el crecimiento del año 10 baja en línea recta hasta el de largo plazo ({glt:.1%}) en {a2} años. Una empresa que "
+            "en el año 10 aún crece rápido vale más que una madura, sin suponer que crece así para siempre.\n"
+            "2. **Perpetuidad:** desde ahí crece al ritmo de largo plazo para siempre (fórmula de Gordon).\n\n"
+            "Cada año se descuenta la **reinversión que exige crecer: g / ROIC**. Con un ROIC alto crecer cuesta poco capital y el PER sube; "
+            "**con un ROIC por debajo de r, crecer más resta valor y el PER baja**. El ROIC es la media del normalizado y el incremental (pestaña "
+            "«ROIC y reinversión»); si no se puede medir, el ROE de 5 años. Si el año 10 ya crece menos que el largo plazo, ese crecimiento se "
+            "mantiene para siempre. Mínimo 5x.\n\n"
+            "La última columna traduce cualquier PER (también el que escribas tú) al crecimiento perpetuo que supone: si pasa del 4-5 %, estás "
+            "suponiendo que crecerá más que la economía para siempre.\n\n"
             f"Como referencia: PER pagado hoy **{(ca.params.price / eps0) if (ca.params.price and eps0 and eps0 > 0) else float('nan'):.1f}x**, "
             f"PER histórico medio sin extremos **{(ph['PER sin outliers'] or float('nan')):.1f}x**, mínimo histórico **{(ph['PER mínimo'] or float('nan')):.1f}x**. "
             "Si crees que la ventaja competitiva seguirá en el año 10 y el mercado pagará más (o menos), escribe tu PER en la casilla.")
@@ -912,7 +1101,7 @@ def _tab_riesgo(T, ca):
         return
     rin = _risk_inputs(T)
     rr = R.analyze_risk(v, ca.params, rin["test_probs"], rin["test_prices"], rin["drop"], rin["min_guarantee"], rin["profiles"])
-    st.caption("Método «Parte II · El riesgo». Todo sale de «Escenarios y valoración»: cambia allí precio, r, horizonte o supuestos y esto se recalcula.")
+    st.caption("Método «Parte II · El riesgo». Todo sale de «Valoración por ventas»: cambia allí precio, r, horizonte o supuestos y esto se recalcula.")
 
     st.markdown("## Conclusión")
     for line in rr.conclusion:

@@ -61,10 +61,16 @@ METRICS: list[tuple[str, str, str, str]] = [
     ("Margen FCF", "Márgenes", "pct", "(Flujo operativo − capex) / ventas"),
     ("I+D / ventas", "Márgenes", "pct", "Gasto en I+D / ventas"),
     ("SBC / ventas", "Márgenes", "pct", "Remuneración en acciones / ventas"),
+    ("SBC / FCF", "Márgenes", "pct", "Remuneración en acciones / flujo de caja libre: la parte del FCF declarado que no es del accionista"),
     ("ROE", "Rentabilidad", "pct", "Beneficio neto / patrimonio"),
     ("ROE medio 5a", "Rentabilidad", "pct", "Media de los últimos 5 ROE"),
     ("ROA", "Rentabilidad", "pct", "Beneficio neto / activo total"),
     ("ROIC", "Rentabilidad", "pct", "EBIT × (1 − tipo efectivo) / (deuda + patrimonio − caja)"),
+    ("ROIC normalizado", "Rentabilidad", "pct", "NOPAT de 5 años / capital invertido operativo de 5 años (circulante operativo + inmovilizado + "
+     "fondo de comercio e intangibles; I+D capitalizado si pesa). Lo que rinde el negocio. Se recalcula cada semana"),
+    ("ROIC incremental", "Rentabilidad", "pct", "ΔNOPAT / Δcapital invertido en 5 años: lo que rinden las inversiones nuevas. Por debajo de tu r, "
+     "crecer no crea valor"),
+    ("Tasa de reinversión", "Rentabilidad", "pct", "Δcapital invertido / NOPAT de 5 años. Crecimiento que «paga» = ROIC incremental × reinversión"),
     ("Deuda / patrimonio", "Salud", "x", "Deuda financiera (corto + largo) / patrimonio"),
     ("Deuda neta / EBITDA", "Salud", "x", "(Deuda − caja) / (EBIT + amortizaciones)"),
     ("Liquidez corriente", "Salud", "x", "Activo corriente / pasivo corriente"),
@@ -80,10 +86,13 @@ METRICS: list[tuple[str, str, str, str]] = [
     ("P/Ventas", "Valoración", "x", "Capitalización / ventas"),
     ("P/Valor contable", "Valoración", "x", "Capitalización / patrimonio"),
     ("P/FCF", "Valoración", "x", "Capitalización / flujo de caja libre"),
+    ("P/(FCF − SBC)", "Valoración", "x", "Capitalización / (flujo de caja libre − remuneración en acciones): el P/FCF sin contar como gratis "
+     "lo que se paga en acciones"),
     ("EV/EBIT", "Valoración", "x", "Valor empresa / resultado operativo"),
     ("EV/EBITDA", "Valoración", "x", "Valor empresa / EBITDA"),
     ("Rent. beneficio", "Valoración", "pct", "BPA / precio (inversa del PER)"),
     ("Rent. FCF", "Valoración", "pct", "FCF / capitalización"),
+    ("Rent. FCF − SBC", "Valoración", "pct", "(FCF − remuneración en acciones) / capitalización"),
     ("Rent. dividendo", "Valoración", "pct", "Dividendos pagados / capitalización"),
     ("Cobertura", "Valoración", "x", "Test de cobertura con la proyección estándar (4 escenarios propuestos por fase, r = 10 %, "
      "n = 10 años): oportunidad esperada / riesgo esperado frente al umbral precio × (1+r)^n. Mayor que 1: compensa. "
@@ -240,7 +249,8 @@ def build_base(progress=None, years_back: int = 10) -> pd.DataFrame:
             "Años caída ventas": downs(rev[-6:]), "Años caída BPA": downs(eps[-6:]),
             "Años con pérdidas": sum(1 for x in ni[-6:] if x is not None and x < 0) if any(x is not None for x in ni[-6:]) else None,
             "Margen bruto": _d(L["gp"], R) if L["gp"] is not None else (_d(R - L["cogs"], R) if (R and L["cogs"] is not None) else None), "Margen operativo": _d(OP, R), "Margen neto": _d(NI, R), "Margen FCF": _d(fcf[-1], R),
-            "I+D / ventas": _d(L["rnd"], R), "SBC / ventas": _d(L["sbc"], R),
+            "I+D / ventas": _d(L["rnd"], R), "SBC / ventas": _d(L["sbc"], R), "_sbc": L["sbc"],
+            "SBC / FCF": _d(L["sbc"], fcf[-1]) if (L["sbc"] is not None and fcf[-1] and fcf[-1] > 0) else None,
             "ROE": _d(NI, EQ) if EQ and EQ > 0 else None, "ROE medio 5a": sum(roes) / len(roes) if len(roes) >= 3 else None,
             "ROA": _d(NI, L["assets"]), "ROIC": _d(OP * (1 - tax_rate), ic) if (OP is not None and ic and ic > 0) else None,
             "Deuda / patrimonio": _d(debt, EQ) if EQ and EQ > 0 else None,
@@ -396,7 +406,8 @@ def row_from_financials(fin, meta: dict, n: int = 11, cik: int = 0) -> dict | No
         "Años caída ventas": downs(rev[-6:]), "Años caída BPA": downs(eps[-6:]),
         "Años con pérdidas": sum(1 for x in ni[-6:] if x is not None and x < 0) if any(x is not None for x in ni[-6:]) else None,
         "Margen bruto": _d(gp, R), "Margen operativo": _d(OP, R), "Margen neto": _d(NI, R), "Margen FCF": _d(fcf[-1], R),
-        "I+D / ventas": _d(g("rnd"), R), "SBC / ventas": _d(g("sbc"), R),
+        "I+D / ventas": _d(g("rnd"), R), "SBC / ventas": _d(g("sbc"), R), "_sbc": g("sbc"),
+        "SBC / FCF": _d(g("sbc"), fcf[-1]) if (g("sbc") is not None and fcf[-1] and fcf[-1] > 0) else None,
         "ROE": _d(NI, EQ) if EQ and EQ > 0 else None, "ROE medio 5a": sum(roes) / len(roes) if len(roes) >= 3 else None,
         "ROA": _d(NI, g("total_assets")), "ROIC": _d(OP * (1 - tax_rate), ic) if (OP is not None and ic and ic > 0) else None,
         "Deuda / patrimonio": _d(debt, EQ) if EQ and EQ > 0 else None,
@@ -576,7 +587,9 @@ def with_valuation(base: pd.DataFrame, mk: pd.DataFrame | None) -> pd.DataFrame:
     fxr = pd.to_numeric(df["_fx_r"], errors="coerce").fillna(1.0)
     eu = pd.to_numeric(df["_fx_r"], errors="coerce").notna()
     if eu.any():
-        for c in ("_debt", "_cash", "_eq", "_fcf", "_op", "_ebitda", "_div", "_rev", "_ni"):
+        if "_sbc" not in df:
+            df["_sbc"] = None
+        for c in ("_debt", "_cash", "_eq", "_fcf", "_op", "_ebitda", "_div", "_rev", "_ni", "_sbc"):
             df[c] = pd.to_numeric(df[c], errors="coerce") * fxr
         df.loc[eu, "Ventas (M$)"] = df.loc[eu, "_rev"] / 1e6
         df.loc[eu, "Beneficio (M$)"] = df.loc[eu, "_ni"] / 1e6
@@ -598,16 +611,22 @@ def with_valuation(base: pd.DataFrame, mk: pd.DataFrame | None) -> pd.DataFrame:
     df["P/Ventas"] = mcap / pos(df["_rev"])
     df["P/Valor contable"] = mcap / pos(df["_eq"])
     df["P/FCF"] = mcap / pos(df["_fcf"])
+    fcf_sbc = pd.to_numeric(df["_fcf"], errors="coerce") - pd.to_numeric(df["_sbc"], errors="coerce").fillna(0) if "_sbc" in df else None
+    df["P/(FCF − SBC)"] = mcap / pos(fcf_sbc) if fcf_sbc is not None else None
+    df["Rent. FCF − SBC"] = fcf_sbc / mcap if fcf_sbc is not None else None
     df["EV/EBIT"] = ev / pos(df["_op"])
     df["EV/EBITDA"] = ev / pos(df["_ebitda"])
     df["Rent. beneficio"] = (df["BPA"] * fxr) / (df["Precio"] * fxq)
     df["Rent. FCF"] = df["_fcf"] / mcap
     df["Rent. dividendo"] = df["_div"].fillna(0) / mcap
+    if "SBC / FCF" not in df:  # bases antiguas, hasta el próximo recálculo semanal
+        df["SBC / FCF"] = None
     return df
 
 
 NOTAS_FILE = Path(__file__).resolve().parent.parent / "data" / "notas_financieras.csv.gz"
-NOTA_COLS = ["Nota financiera", "Nota PyG", "Nota Balance", "Nota Cash Flow", "Nota Asignación de capital", "Preguntas no aplicables"]
+NOTA_COLS = ["Nota financiera", "Nota PyG", "Nota Balance", "Nota Cash Flow", "Nota Asignación de capital", "Preguntas no aplicables",
+             "ROIC normalizado", "ROIC incremental", "Tasa de reinversión"]
 
 
 def with_notas(df: pd.DataFrame) -> pd.DataFrame:
@@ -627,6 +646,9 @@ def with_notas(df: pd.DataFrame) -> pd.DataFrame:
             continue
         us = df["CIK"].map(n[c]) if c in n else None
         df[c] = us if c not in df else (pd.Series(us, index=df.index).where(pd.to_numeric(df["CIK"], errors="coerce").fillna(0) > 0, df[c]))
+    for c in NOTA_COLS:  # columnas nuevas que aún no trae el fichero semanal
+        if c not in df:
+            df[c] = None
     return modelo_std.con_cobertura(df)
 
 

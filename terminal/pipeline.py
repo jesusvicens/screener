@@ -1,7 +1,7 @@
 """Une todo: descarga → estados → análisis → valoración. Lo usa la ficha de empresa y el lote."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pandas as pd
 
@@ -26,6 +26,12 @@ class CompanyAnalysis:
     answers: dict
     score: dict
     saved: dict
+    # Valoración por ROIC (reinversión × rentabilidad); la principal sigue siendo la de ventas (`val`).
+    roic_op_df: pd.DataFrame | None = None
+    roic_res: dict = field(default_factory=dict)
+    proposed_roic: dict = field(default_factory=dict)
+    scenarios_roic: dict = field(default_factory=dict)
+    val_roic: A.Valuation | None = None
 
 
 def load_company(ticker: str, n_years: int = 10) -> tuple[dict, F.Financials, pd.Series]:
@@ -86,6 +92,12 @@ def analyze(meta: dict, fin: F.Financials, hist: pd.Series, saved: dict | None =
             f"BPA calculado con {params.acciones_manual:,.0f} M de acciones escritas a mano para todos los años sin dato."]
     avg = prices.fiscal_year_average(hist, fin.period_end)
     stats = A.history_stats(fin)
+    roic_op_df, roic_res = None, {}
+    try:
+        roic_op_df, roic_res = A.roic_operativo(fin, params.rd_life)
+        stats.update({k: roic_res.get(k) for k in ("roic_norm", "roic_inc", "reinv", "g_impl", "roic_salida")})
+    except Exception:  # noqa: BLE001
+        pass
     eps_df = A.eps_model(fin, avg)
     roic_df = A.roic(fin, params.rd_life)
     phase = saved.get("fase") or stats["phase"]
@@ -100,8 +112,16 @@ def analyze(meta: dict, fin: F.Financials, hist: pd.Series, saved: dict | None =
         for qid, (pts, _why) in sugg.items():
             answers.setdefault(qid, pts)
     sc = E.score(answers)
+    prop_r, scen_r, val_r = {}, {}, None
+    try:
+        prop_r = A.propose_scenarios_roic(stats, params, phase)
+        scen_r = A.merge_overrides_roic(prop_r, saved.get("supuestos_roic"), params)
+        if params.price and fin.get("eps_diluted", fin.years[-1]) is not None and fin.get("operating_income", fin.years[-1]) is not None:
+            val_r = A.valuation(fin, stats, scen_r, params, projector=A.project_roic)
+    except Exception:  # noqa: BLE001
+        pass
     return CompanyAnalysis(meta, fin, hist, avg, stats, eps_df, roic_df, params, phase, proposed, scenarios, val, sugg,
-                           answers, sc, saved)
+                           answers, sc, saved, roic_op_df, roic_res, prop_r, scen_r, val_r)
 
 
 def summary_row(ca: CompanyAnalysis) -> dict:
