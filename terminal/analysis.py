@@ -286,6 +286,15 @@ def history_stats(f: Financials) -> dict:
     s: dict = {}
     s["rev_last_usd"] = (rev.get(L) or 0) * FX_USD.get((f.currency or "USD").upper(), 1.0)  # millones de $ (aprox.)
     s["g3"] = _cagr(rev.get(L), rev.get(back(3)), 3) if back(3) else None
+    # Crecimiento de referencia: la MEDIANA de los crecimientos anuales de los últimos 5 años. Un año excepcional (2020,
+    # una adquisición grande…) no cambia la fase ni los supuestos, como sí pasaba con el compuesto de 3 años.
+    g_recent = [g for g in growth[-5:] if g is not None]
+    if len(g_recent) >= 3:
+        gs = sorted(g_recent)
+        m = len(gs) // 2
+        s["g_med5"] = gs[m] if len(gs) % 2 else (gs[m - 1] + gs[m]) / 2
+    else:
+        s["g_med5"] = s["g3"]
     s["g5"] = _cagr(rev.get(L), rev.get(back(5)), 5) if back(5) else None
     s["g9"] = _cagr(rev.get(L), rev.get(ys[0]), N - 1) if N > 1 else None
     s["years_down"] = sum(1 for g in growth if g is not None and g < 0)
@@ -315,7 +324,7 @@ def history_stats(f: Financials) -> dict:
     s["cl_sales"] = _div(f.get("current_liabilities", L), rev.get(L), 0.0)
     s["cyclical"] = bool(s["years_down"] >= 2 and s["om_max"] is not None and (s["om_max"] - s["om_min"]) >= 0.15)
     s["recovery"] = bool(s["om10"] is not None and s["om_last"] is not None and s["om10"] > 0.05 and s["om_last"] < 0.5 * s["om10"])
-    g3 = s["g3"] if s["g3"] is not None else 0.0
+    g3 = s["g_med5"] if s.get("g_med5") is not None else 0.0
     if s["recovery"]:
         phase = "Recuperación"
     elif s["cyclical"]:
@@ -342,7 +351,8 @@ def history_stats(f: Financials) -> dict:
 
 
 STAT_LABELS = [
-    ("g3", "Crecimiento anual de ventas, últimos 3 años (g3)", "pct"),
+    ("g_med5", "Crecimiento de referencia: mediana de los crecimientos anuales de 5 años (decide la fase y los supuestos)", "pct"),
+    ("g3", "Crecimiento anual de ventas, últimos 3 años (compuesto)", "pct"),
     ("g5", "Crecimiento anual de ventas, últimos 5 años", "pct"),
     ("g9", "Crecimiento anual de ventas, todo el periodo (g9)", "pct"),
     ("years_down", "Años con caída de ventas", "int"),
@@ -429,7 +439,8 @@ def propose_scenarios(stats: dict, params: InvestorParams, phase: str) -> dict[s
     # márgenes imposibles (bruto entre 0 y 100 %; operativo entre −50 % y el bruto). Tus supuestos escritos a mano no se tocan.
     clip = lambda x, lo, hi: min(max(x, lo), hi)  # noqa: E731
     tope = tope_por_tamano(stats.get("rev_last_usd"))
-    g3 = clip(stats.get("g3") or 0.0, -0.30, tope)
+    g_ref = stats.get("g_med5") if stats.get("g_med5") is not None else stats.get("g3")
+    g3 = clip(g_ref or 0.0, -0.30, tope)
     g9 = clip(stats.get("g9") or 0.0, -0.30, tope)
     glt = params.g_lt
     gl, g5m, g10m, gmin, gmax = (clip(stats.get(k) or 0.0, 0.0, 1.0) for k in ("gm_last", "gm5", "gm10", "gm_min", "gm_max"))
