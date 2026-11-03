@@ -1,12 +1,13 @@
 """Análisis cualitativos que hace Claude cada día de las candidatas (empresas que aún no son tuyas).
 
 Se guardan aparte de tus análisis (data/candidatas/ en tu repo de datos, no en data/analisis/), así una empresa
-analizada por Claude no pasa a ser «tuya». «Recomendadas» usa su nota cualitativa para ordenar, y la ficha enseña su
-dossier y propone sus respuestas del examen cualitativo hasta que guardes las tuyas.
+analizada por Claude no pasa a ser «tuya». Screener → Recomendaciones las ordena con su nota cualitativa, y la ficha propone sus
+respuestas del examen cualitativo (y el dossier, si lo hay) hasta que guardes las tuyas.
 
 Cada fichero <TICKER>.json: ticker, empresa, fecha, en_una_frase, examen {q02..q21: 1-3, 0 = no aplica}, motivos {qid: texto},
-nota_cualitativa, dossier (Markdown con «### » por apartado), alertas [..], veredicto, fuentes [{titulo, url}].
-_INDICE.json: {"empresas": {TICKER: {fecha, empresa, nota_cualitativa, en_una_frase, veredicto, alertas}}, "actualizado": …}.
+nota_cualitativa, notas_bloque, tipo («test rápido»), alertas [..], veredicto, fuentes [{titulo, url}] y, opcional, dossier
+(Markdown con «### » por apartado).
+_INDICE.json: {"empresas": {TICKER: {fecha, empresa, tipo, nota_cualitativa, notas_bloque, en_una_frase, veredicto, alertas}}, …}.
 """
 from __future__ import annotations
 

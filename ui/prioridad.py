@@ -19,7 +19,8 @@ def _guardados() -> dict[str, dict]:
             t = str(it.get("ticker", "")).upper()
             if t and not t.startswith("_"):
                 out[t] = {"resumen": it.get("resumen") or {}, "actualizado": it.get("actualizado"),
-                          "mos": ((it.get("params") or {}).get("mos")), "frase": _frase(it.get("dossier") or "")}
+                          "mos": ((it.get("params") or {}).get("mos")), "frase": _frase(it.get("dossier") or ""),
+                          "examen": it.get("examen") or {}, "motivos": it.get("cualitativo_motivos") or {}}
     except Exception:  # noqa: BLE001
         pass
     return out
@@ -83,7 +84,6 @@ def body():
     gu = _guardados()
     from ui import panel
     secciones = [(":material/monitoring: Panel", lambda: panel.panel(df, d, gu)),
-                 (":material/recommend: Recomendadas para analizar", lambda: _recomendadas(df, d, gu)),
                  (":material/list: Mis listas", lambda: _mis_listas(df, d, gu)),
                  (":material/event: Calendario de resultados", lambda: panel.calendario_tab(df, d, gu))]
     tabs = st.tabs([n for n, _ in secciones], key="prio_tabs", on_change="rerun")
@@ -93,118 +93,111 @@ def body():
                 fn()
 
 
-# ------------------------------------------------------------------ recomendadas
-def _recomendadas(df: pd.DataFrame, d: dict, gu: dict):
-    c = st.columns([1, 1, 1, 1.4, 1.6])
-    nmin = c[0].number_input("Nota financiera mínima", 0.0, 10.0, 7.5, 0.25)
-    namax = c[1].number_input("Máx. preguntas «No aplica»", 0, 21, 3)
-    vmin = c[2].number_input("Ventas mínimas (M$)", 0, 1_000_000, 300, 100)
-    sectors = c[3].multiselect("Sector", sorted(s for s in df["Sector"].dropna().unique() if s != "—"), placeholder="Todos")
-    orden = c[4].selectbox("Ordenar por", ["Prioridad (financiera + cualitativa + precio)", "Nota financiera", "Nota cualitativa",
-                                             "Crec. medio BPA", "Rent. FCF"])
-    e = st.columns([1, 1, 1, 1])
-    excl_listas = e[0].toggle("Ocultar las que ya están en tus listas", True)
-    excl_guard = e[1].toggle("Ocultar las que ya tienes analizadas", True)
-    solo_us = e[2].toggle("Solo empresas de EE. UU.", True,
-                          help="Las extranjeras (ADR) a menudo reportan en otra divisa y sus ratios de precio salen sin sentido")
-
-    m = (pd.to_numeric(df["Nota financiera"], errors="coerce") >= nmin) \
-        & (pd.to_numeric(df["Preguntas no aplicables"], errors="coerce").fillna(99) <= namax) \
-        & (pd.to_numeric(df["Ventas (M$)"], errors="coerce").fillna(0) >= vmin) \
-        & df["Mercado"].isin(["Nasdaq", "NYSE"])
-    if sectors:
-        m &= df["Sector"].isin(sectors)
-    if solo_us and "País" in df:
-        m &= df["País"].isin(["United States", "—"])
-    cand = df[m].copy()
-    if excl_listas:
-        cand = cand[~cand["Ticker"].isin(list(d["empresas"]))]
-    if excl_guard:
-        cand = cand[~cand["Ticker"].isin(list(gu))]
-    # Análisis cualitativos (de Claude, cada día; o tuyos si ya contestaste el examen)
-    from terminal import candidatas
+# ------------------------------------------------------------------ recomendaciones (en el Screener)
+def recomendaciones():
+    """Todas las empresas con el examen cualitativo contestado (test de Claude o tu análisis), ordenadas por prioridad:
+    40 % nota financiera + 30 % nota cualitativa + 30 % precio."""
+    from terminal import candidatas, exam as E
+    explica("recomendaciones")
+    d = _listas()
+    df = _universo()
+    if df is None:
+        st.info("Abre primero la pestaña **Screener** una vez para descargar los datos de todas las empresas.")
+        return
+    gu = _guardados()
     try:
         cq = candidatas.indice()
     except Exception:  # noqa: BLE001
         cq = {}
-    cand["Nota cualitativa"] = cand["Ticker"].map(lambda t: (cq.get(t) or {}).get("nota_cualitativa"))
-    cand["Análisis cualitativo"] = cand["Ticker"].map(lambda t: (cq.get(t) or {}).get("fecha"))
-    cand["Veredicto"] = cand["Ticker"].map(lambda t: (cq.get(t) or {}).get("veredicto"))
-    if e[3].toggle("Solo con análisis cualitativo", False, help=f"{len(cq)} empresas analizadas por Claude hasta hoy"):
-        cand = cand[cand["Nota cualitativa"].notna()]
-    det = listas.prioridad_detalle(cand)
-    for c in det.columns:
-        cand[c] = det[c]
-    key = "Prioridad" if orden.startswith("Prioridad") else orden
-    cand = cand.sort_values(key, ascending=False, na_position="last")
+    qids = [q[0] for q in E.QUESTIONS if q[1] in E.QUALITATIVE_BLOCKS]
+    info: dict[str, dict] = {}
+    for t, e in cq.items():
+        info[t] = {"Nota cualitativa": e.get("nota_cualitativa"), "Origen": "Claude · " + (e.get("tipo") or "test rápido"),
+                   "Fecha del test": e.get("fecha"), "Veredicto": e.get("veredicto"), "Alertas": " · ".join(e.get("alertas") or []),
+                   "_frase": e.get("en_una_frase"), "_bloques": e.get("notas_bloque") or {}}
+    for t, g in gu.items():  # tus análisis con el cualitativo contestado mandan sobre el test de Claude
+        ex = {k: v for k, v in (g.get("examen") or {}).items() if k in qids}
+        if any(v for v in ex.values()):
+            sc = E.score(ex)
+            info[t] = {"Nota cualitativa": round(sc["cualitativa"], 2), "Origen": "Tu análisis", "Fecha del test": (g.get("actualizado") or "")[:10],
+                       "Veredicto": (info.get(t) or {}).get("Veredicto"), "Alertas": (info.get(t) or {}).get("Alertas"),
+                       "_frase": g.get("frase") or (info.get(t) or {}).get("_frase"),
+                       "_bloques": {b: sc["blocks"][b]["nota"] for b in E.QUALITATIVE_BLOCKS}}
+    if not info:
+        st.info("Todavía no hay ninguna empresa con el examen cualitativo contestado. La tarea diaria de Claude puntúa 50 candidatas al día; "
+                "aparecerán aquí según las vaya haciendo.")
+        return
+    cand = df[df["Ticker"].isin(list(info))].drop_duplicates("Ticker").copy()
+    for c in ("Nota cualitativa", "Origen", "Fecha del test", "Veredicto", "Alertas"):
+        cand[c] = cand["Ticker"].map(lambda t, c=c: info[t].get(c))
+    for b in E.QUALITATIVE_BLOCKS:
+        cand[f"Cual. {b}"] = cand["Ticker"].map(lambda t, b=b: (info[t].get("_bloques") or {}).get(b))
 
-    st.markdown(f"## {num(len(cand))} candidatas")
-    with st.container(border=True):
-        st.markdown(
-            f"**Cómo se ordena.** Prioridad (0-10) = **{listas.PESO_NOTA_Q:.0%} nota financiera** + **{listas.PESO_CUAL_Q:.0%} nota cualitativa** + "
-            f"**{listas.PESO_PRECIO:.0%} precio**.  \n"
-            f"· **Puntos por nota** = nota financiera × {listas.PESO_NOTA_Q:.1f}. La nota es tu examen financiero de 21 preguntas "
-            "(PyG, Balance, Cash Flow y Asignación de capital) calculado con 10 años de datos.  \n"
-            f"· **Puntos por cualitativo** = nota cualitativa × {listas.PESO_CUAL_Q:.1f}: tu examen cualitativo de 20 preguntas (negocio, producto, "
-            "dirección, estrategia, cultura y sector), contestado por Claude con un análisis completo de la empresa (cada día analiza "
-            f"nuevas candidatas; lleva {len(cq)}). Mientras no esté analizada, cuenta 5 (1,5 puntos).  \n"
-            f"· **Puntos por precio** = posición de 0 a 10 × {listas.PESO_PRECIO:.1f}. Se compara la **rentabilidad por caja libre** "
-            "(flujo de caja libre ÷ capitalización: cuánto «rinde» la empresa al precio de hoy) con la del resto de candidatas de "
-            "esta lista: la que más rinde saca 10 (3 puntos) y la que menos, 0. Si el dato no es fiable o falta, cuenta 5 (1,5 puntos).  \n"
-            "· Por eso una empresa con nota algo menor puede ir delante si está bastante más barata. La columna **Motivo** "
-            "lo cuenta en palabras para cada una. Es un orden para decidir qué mirar primero, no una recomendación de compra.")
-    if not cand.empty:
-        top = cand.iloc[0]
-        st.markdown(f"**La primera, {top['Ticker']}** ({top['Empresa']}): {top['Prioridad']:.2f} puntos = "
-                    f"{top['Puntos por nota']:.2f} por nota + {top['Puntos por precio']:.2f} por precio. {top['Motivo']}.")
-    cols = ["Empresa", "Negocio", "Prioridad", "Puntos por nota", "Puntos por cualitativo", "Puntos por precio", "Nota cualitativa", "Veredicto",
-            "Motivo", "Análisis cualitativo", "Nota financiera", "Nota PyG", "Nota Balance",
-            "Nota Cash Flow", "Nota Asignación de capital", "Sector", "Capitalización (M$)", "PER", "Rent. FCF", "Crec. medio BPA",
-            "CAGR ventas 5a", "ROE medio 5a"]
+    c = st.columns([1, 1, 1.6, 1.4, 1.4])
+    qmin = c[0].number_input("Nota cualitativa mínima", 0.0, 10.0, 0.0, 0.5)
+    nmin = c[1].number_input("Nota financiera mínima", 0.0, 10.0, 0.0, 0.5)
+    sectors = c[2].multiselect("Sector", sorted(s for s in cand["Sector"].dropna().unique() if s != "—"), placeholder="Todos")
+    origen = c[3].multiselect("Origen", sorted(cand["Origen"].dropna().unique()), placeholder="Todos")
+    orden = c[4].selectbox("Ordenar por", ["Prioridad", "Nota cualitativa", "Nota financiera", "Margen de seguridad", "Rent. FCF"])
+    e = st.columns([1, 1, 2])
+    excl_listas = e[0].toggle("Ocultar las de mis listas", False)
+    solo_mos = e[1].toggle("Solo con margen de seguridad positivo", False)
+    m = (pd.to_numeric(cand["Nota cualitativa"], errors="coerce").fillna(0) >= qmin) \
+        & (pd.to_numeric(cand["Nota financiera"], errors="coerce").fillna(0) >= nmin)
+    if sectors:
+        m &= cand["Sector"].isin(sectors)
+    if origen:
+        m &= cand["Origen"].isin(origen)
+    if excl_listas:
+        m &= ~cand["Ticker"].isin(list(d["empresas"]))
+    if solo_mos and "Margen de seguridad" in cand:
+        m &= pd.to_numeric(cand["Margen de seguridad"], errors="coerce") > 0
+    cand = cand[m].copy()
+    det = listas.prioridad_detalle(cand)
+    for col in det.columns:
+        cand[col] = det[col]
+    cand = cand.sort_values(orden, ascending=False, na_position="last")
+
+    n_claude = sum(1 for v in info.values() if v["Origen"].startswith("Claude"))
+    st.markdown(f"## {num(len(cand))} empresas con el examen cualitativo")
+    st.caption(f"{n_claude} puntuadas por Claude (50 nuevas cada día, en orden de prioridad) y {len(info) - n_claude} de tus análisis. "
+               f"**Prioridad** (0-10) = {listas.PESO_NOTA_Q:.0%} nota financiera + {listas.PESO_CUAL_Q:.0%} nota cualitativa + "
+               f"{listas.PESO_PRECIO:.0%} precio (rentabilidad por caja libre frente al resto de esta tabla: la más barata, 10). El test rápido "
+               "de Claude se basa en unas pocas fuentes por empresa: es un filtro para decidir qué mirar, no un análisis completo.")
     from terminal import descripciones
-    cand = cand.copy()
-    cand["Negocio"] = [descripciones.para(t, gu) for t in cand["Ticker"]]
-    out = cand.head(200)[["Ticker"] + [c for c in cols if c in cand]].set_index("Ticker")
-    out = out.rename(columns={"Crec. medio BPA": "Crec. medio BPA 5a"})
+    cand["Negocio"] = [info[t].get("_frase") or descripciones.para(t, gu) for t in cand["Ticker"]]
+    cols = ["Empresa", "Negocio", "Prioridad", "Nota cualitativa", "Nota financiera", "Veredicto", "Margen de seguridad", "Valor estimado",
+            "Precio", "Alertas", "Origen", "Fecha del test", "Puntos por nota", "Puntos por cualitativo", "Puntos por precio"] \
+        + [f"Cual. {b}" for b in E.QUALITATIVE_BLOCKS] + ["Sector", "Capitalización (M$)", "PER", "Rent. FCF", "CAGR ventas 5a", "Margen operativo",
+                                                          "ROIC incremental"]
+    out = cand[["Ticker"] + [x for x in cols if x in cand]].set_index("Ticker")
     out["Empresa"] = [company_url(t, n) for t, n in zip(out.index, out["Empresa"])]
     kinds = {k: v for k, v in screener.METRIC_KIND.items()}
     kinds.update({"Prioridad": "ps", "Puntos por nota": "ps", "Puntos por cualitativo": "ps", "Puntos por precio": "ps", "Nota cualitativa": "ps",
-                  "Crec. medio BPA 5a": "pct"})
+                  "Valor estimado": "ps", **{f"Cual. {b}": "ps" for b in E.QUALITATIVE_BLOCKS}})
     ah = st.columns([3, 1.2])
     with ah[1]:
         rh = alto_filas("rec_alto")
-    show_cols_table(out, height=560, kinds={k: v for k, v in kinds.items() if k in out.columns}, row_height=rh,
-                    column_config={"Empresa": st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$",
-                                                                          help="Abre la ficha en una pestaña nueva"),
-                                   "Negocio": st.column_config.TextColumn("Negocio", width="large", help="Qué hace la empresa: tu «En una frase» si tienes dossier; si no, el resumen de su actividad (Yahoo Finance/Nasdaq, en inglés). Pasa el ratón para leerlo entero."),
-                                   "Veredicto": st.column_config.TextColumn("Veredicto", width="large",
-                                                                            help="Conclusión del análisis cualitativo de Claude, en una línea"),
-                                   "Motivo": st.column_config.TextColumn("Motivo", width="large",
-                                                                         help="Por qué está en esta posición")})
-    if len(cand) > 200:
-        st.caption("Muestro las 200 primeras.")
+    show_cols_table(out, height=600, kinds={k: v for k, v in kinds.items() if k in out.columns}, row_height=rh,
+                    column_config={"Empresa": st.column_config.LinkColumn("Empresa", display_text=r"#(.*)$", help="Abre la ficha en una pestaña nueva"),
+                                   "Negocio": st.column_config.TextColumn("Negocio", width="large"),
+                                   "Veredicto": st.column_config.TextColumn("Veredicto", width="large"),
+                                   "Alertas": st.column_config.TextColumn("Alertas", width="large")})
     if not out.empty:
-        ver = st.selectbox("Ver el motivo completo de…", list(out.index), index=None, placeholder="Elige una empresa de la tabla…",
+        ver = st.selectbox("Ver las respuestas del examen de…", list(out.index), index=None, placeholder="Elige una empresa de la tabla…",
                            key="rec_ver")
         if ver:
             r = cand[cand["Ticker"] == ver].iloc[0]
-            pos = list(cand["Ticker"]).index(ver) + 1
-            bloques = " · ".join(f"{lab} **{r[c]:.1f}**" for c, lab in listas.BLOQUES.items() if c in r and pd.notna(r[c]))
-            st.markdown(
-                f"**{ver} · {r['Empresa']}** — puesto **{pos}** de {len(cand)}  \n"
-                f"Prioridad **{r['Prioridad']:.2f}** = {r['Puntos por nota']:.2f} por nota (nota {r['Nota financiera']:.2f} × "
-                f"{listas.PESO_NOTA_Q:.1f}) + {r['Puntos por cualitativo']:.2f} por cualitativo + {r['Puntos por precio']:.2f} por precio "
-                f"(posición {r['Precio (0-10)']:.1f}/10 × {listas.PESO_PRECIO:.1f})  \n"
-                f"Bloques del examen: {bloques}  \n"
-                f"{r['Motivo']}.")
-            q = cq.get(ver)
-            if q:
-                st.markdown(f"**Análisis cualitativo de Claude ({q.get('fecha')}) · nota {str(round(q.get('nota_cualitativa') or 0, 1)).replace('.', ',')}/10**  \n"
-                            f"{q.get('en_una_frase') or ''}  \n**Veredicto:** {q.get('veredicto') or '—'}")
-                if q.get("alertas"):
-                    st.markdown("**Alertas:** " + " · ".join(q["alertas"]))
-                st.caption("El dossier completo y las respuestas del examen, con su motivo, están en la ficha de la empresa (Negocio → Dossier "
-                           "y Valoración → Examen y nota).")
+            st.markdown(f"**{ver} · {r['Empresa']}** — prioridad **{r['Prioridad']:.2f}** = {r['Puntos por nota']:.2f} por nota financiera + "
+                        f"{r['Puntos por cualitativo']:.2f} por cualitativa + {r['Puntos por precio']:.2f} por precio. {r['Motivo']}.")
+            if (info[ver]["Origen"] or "").startswith("Claude"):
+                a = candidatas.load(ver) or {}
+                ans, mot = a.get("examen") or {}, a.get("motivos") or {}
+                st.markdown(f"{a.get('en_una_frase') or ''}  \n**Veredicto:** {a.get('veredicto') or '—'}")
+            else:
+                ans, mot = gu[ver].get("examen") or {}, gu[ver].get("motivos") or {}
+            from ui import cualitativo
+            cualitativo.resumen_cualitativo(ver, None, ans, mot)
 
     a = st.columns([3, 1.4, 1])
     pick = a[0].multiselect("Añadir a una lista", list(out.index), placeholder="Elige empresas de la tabla…")
@@ -257,7 +250,7 @@ def _tabla_lista(df: pd.DataFrame, d: dict, gu: dict, tickers: list[str], g: str
 
 def _mis_listas(df: pd.DataFrame, d: dict, gu: dict):
     if not d["empresas"]:
-        st.info("Aún no tienes empresas en ninguna lista. Añádelas desde «Recomendadas», desde la ficha de una empresa o desde el screener.")
+        st.info("Aún no tienes empresas en ninguna lista. Añádelas desde Screener → Recomendaciones, desde la ficha de una empresa o desde el screener.")
     # Avisos de precio
     alerts = []
     idx = df.drop_duplicates("Ticker").set_index("Ticker")

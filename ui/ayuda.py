@@ -150,7 +150,6 @@ Para cada año calcula el **PER de salida requerido** para ganar r. Si es menor 
 - **Panel:** todas las empresas de tus listas y de tu cartera en una pantalla: precio, variación del día, del mes y del año, distancia al máximo de 52 semanas y a tu precio objetivo (si no has puesto uno, el precio máximo de compra de tu análisis), PER, nota y próximos resultados. Avisos arriba: 🔔 en precio objetivo y 📅 presentan en los próximos 14 días.
 - **Calendario de resultados:** próximas presentaciones de tus empresas agrupadas por semana. La fecha es estimada con el calendario de años anteriores (la SEC no publica fechas futuras): confírmala en su web.
 
-- **Recomendadas para analizar:** empresas con buena nota financiera (examen calculado cada semana para todas) que aún no tienes en tus listas ni analizadas. **Prioridad** (0-10) = 40 % nota financiera + 30 % nota cualitativa + 30 % precio relativo. La **nota cualitativa** sale del examen cualitativo que contesta Claude cada día con un análisis completo de nuevas candidatas (sin analizar todavía cuenta 5). En precio, la candidata con mayor rentabilidad por flujo de caja libre (FCF / capitalización) saca 10 y la más cara, 0. Las columnas de puntos, **Veredicto** y **Motivo** explican la posición de cada una. Es un orden para empezar, no una recomendación de compra.
 - **Mis listas:** En cartera, A analizar, Caras (esperar precio), Descartadas, Seguir de cerca, Aceptadas y las que crees tú. Cambia la columna «Lista» para mover una empresa, escribe un comentario o un **precio objetivo** y pulsa «Guardar cambios». Cuando el precio llega a tu objetivo, sale un aviso 🔔 arriba.
 - **Precio máx. sugerido:** si tienes la empresa analizada y guardada, tu valor estimado × (1 − tu margen de seguridad). Puedes copiarlo como precio objetivo.
 - También puedes añadir empresas desde la ficha (desplegable «Lista» junto a «Guardar análisis») y desde el resultado del screener.
@@ -169,6 +168,16 @@ Para cada año calcula el **PER de salida requerido** para ganar r. Si es menor 
 - **Comparables:** propuesta automática (misma industria del screener de Nasdaq y ventas parecidas). Cámbialos a tu gusto y pulsa «Guardar»: se quedan guardados con la empresa.
 - **Dónde queda:** su puesto en cada métrica (1.º = la mejor; en PER, P/FCF y EV/EBIT, la más barata) y la mediana del grupo.
 - **Gráficos:** tu empresa en azul y la mediana en línea discontinua. Datos del último ejercicio del screener (precios del cierre de anoche).
+""",
+    "recomendaciones": """
+**Para qué sirve:** ver todas las empresas que tienen contestado el examen cualitativo (20 preguntas: negocio, producto, dirección, estrategia, cultura y sector), ordenadas para decidir cuáles mirar primero.
+
+- **Origen:** «Claude · test rápido» lo hace una tarea diaria, que puntúa 50 candidatas al día en orden de prioridad, con el motivo de cada respuesta y unas pocas fuentes por empresa. «Tu análisis» son las que has contestado tú, y mandan sobre el test de Claude.
+- **Prioridad** (0-10) = 40 % nota financiera + 30 % nota cualitativa + 30 % precio (rentabilidad por caja libre frente al resto de la tabla).
+- **Valor estimado y margen de seguridad:** la proyección estándar por ventas, la misma del screener.
+- Abajo puedes leer las 20 respuestas de cualquier empresa con su motivo y añadir a tus listas las que te interesen.
+
+Es un filtro para decidir qué estudiar, no una recomendación de compra.
 """,
     "bandas": """
 **Para qué sirve:** responder dos preguntas rápidas antes de los escenarios: ¿está cara o barata frente a su propia historia? y ¿qué rentabilidad sale con cada combinación de crecimiento y múltiplo?

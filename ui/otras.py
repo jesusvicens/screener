@@ -63,7 +63,14 @@ def screener_page():
                 unsafe_allow_html=True)
     st.markdown("<span class='subtle'>SCREENER · COTIZADAS DE EE. UU. Y EUROPA</span>", unsafe_allow_html=True)
     st.markdown("# Screener")
-    _screener_body()
+    secciones = [(":material/filter_alt: Screener", _screener_body)]
+    from ui import prioridad
+    secciones.append((":material/recommend: Recomendaciones", prioridad.recomendaciones))
+    tabs = st.tabs([n for n, _ in secciones], key="scr_secciones", on_change="rerun")
+    for (n, fn), tb in zip(secciones, tabs):
+        if tb.open:
+            with tb:
+                fn()
 
 
 def listas_page():
