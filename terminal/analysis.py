@@ -286,10 +286,11 @@ def history_stats(f: Financials) -> dict:
     s: dict = {}
     s["rev_last_usd"] = (rev.get(L) or 0) * FX_USD.get((f.currency or "USD").upper(), 1.0)  # millones de $ (aprox.)
     s["g3"] = _cagr(rev.get(L), rev.get(back(3)), 3) if back(3) else None
-    # Crecimiento de referencia: la MEDIANA de los crecimientos anuales de los últimos 5 años. Un año excepcional (2020,
-    # una adquisición grande…) no cambia la fase ni los supuestos, como sí pasaba con el compuesto de 3 años.
-    g_recent = [g for g in growth[-5:] if g is not None]
-    if len(g_recent) >= 3:
+    # Crecimiento de referencia: la MEDIANA de los crecimientos anuales de los últimos 3 años. Un año excepcional (2020,
+    # una adquisición grande…) no cambia la fase ni los supuestos, como sí pasaba con el compuesto de 3 años, y a la vez
+    # recoge enseguida un frenazo de varios años (con 5 años, Lululemon seguía en «Crecimiento» con 4 años frenando).
+    g_recent = [g for g in growth[-3:] if g is not None]
+    if len(g_recent) >= 2:
         gs = sorted(g_recent)
         m = len(gs) // 2
         s["g_med5"] = gs[m] if len(gs) % 2 else (gs[m - 1] + gs[m]) / 2
@@ -351,7 +352,7 @@ def history_stats(f: Financials) -> dict:
 
 
 STAT_LABELS = [
-    ("g_med5", "Crecimiento de referencia: mediana de los crecimientos anuales de 5 años (decide la fase y los supuestos)", "pct"),
+    ("g_med5", "Crecimiento de referencia: mediana de los crecimientos anuales de 3 años (decide la fase y los supuestos)", "pct"),
     ("g3", "Crecimiento anual de ventas, últimos 3 años (compuesto)", "pct"),
     ("g5", "Crecimiento anual de ventas, últimos 5 años", "pct"),
     ("g9", "Crecimiento anual de ventas, todo el periodo (g9)", "pct"),

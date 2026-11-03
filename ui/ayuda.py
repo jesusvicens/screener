@@ -86,7 +86,7 @@ La principal sigue siendo la valoración por ventas. Si las dos se separan mucho
 - **Crecimiento a perpetuidad:** el ritmo de madurez (≈ PIB nominal), el que se supone para siempre en el PER de salida.
 - **Años de la 2.ª etapa:** lo que tarda el crecimiento del año 10 en bajar hasta el de largo plazo.
 - **Años hasta márgenes:** cuánto tardan los márgenes en pasar del último real al del escenario.
-- **Fase:** la propone una regla con el crecimiento mediano de las ventas de los últimos 5 años (un año excepcional, como 2020, no la cambia), la ciclicidad y la recuperación; puedes cambiarla.
+- **Fase:** la propone una regla con el crecimiento mediano de las ventas de los últimos 3 años (un año excepcional, como 2020, no la cambia), la ciclicidad y la recuperación; puedes cambiarla.
 """,
     "esc_3": """
 **Escenarios.** Cuatro futuros posibles con su probabilidad. Las casillas vacías usan la propuesta de tu Excel según la fase; escribe encima para fijar tu supuesto.

@@ -22,18 +22,44 @@ def _band_chart(ca, ps: list, pcts: dict, label: str, unit_name: str):
     step = step[step.index >= base.index[0]].where(lambda s: s > 0)
     hh = h[h.index >= base.index[0]]
     fig = go.Figure()
+    fig.add_scatter(x=hh.index, y=hh, name="Cotización", mode="lines", line=dict(color=TEXT, width=2),
+                    hovertemplate="%{x|%d-%m-%Y}: %{y:,.2f}<extra>Cotización</extra>")
+    nombres = {0.90: "p90 (cara)", 0.75: "p75", 0.50: "Mediana (p50)", 0.25: "p25", 0.10: "p10 (barata)"}
     for p in (0.90, 0.75, 0.50, 0.25, 0.10):
         if p not in pcts:
             continue
         y = step * pcts[p]
-        fig.add_scatter(x=y.index, y=y, name=f"{label} p{int(p * 100)} ({mult(pcts[p])})", mode="lines",
-                        line=dict(color=BAND_COL[p], width=2 if p == 0.5 else 1, dash="solid" if p == 0.5 else "dot"),
-                        hovertemplate="%{y:,.2f}<extra>" + f"{label} {mult(pcts[p])}" + "</extra>")
-    fig.add_scatter(x=hh.index, y=hh, name="Precio", mode="lines", line=dict(color=TEXT, width=2),
-                    hovertemplate="%{x|%d-%m-%Y}: %{y:,.2f}<extra>Precio</extra>")
-    fig_layout(fig, "", h=380, unit=f"precio por acción frente a {unit_name} × {label} histórico")
-    fig.update_layout(xaxis=dict(type="date"), hovermode="x unified")
+        fig.add_scatter(x=y.index, y=y, name=f"{nombres[p]} · {mult(pcts[p])}", mode="lines",
+                        line=dict(color=BAND_COL[p], width=2 if p == 0.5 else 1.2, dash="solid" if p == 0.5 else "dot"),
+                        hovertemplate="%{y:,.2f}<extra>" + f"{nombres[p]} · {label} {mult(pcts[p])}" + "</extra>")
+    fig_layout(fig, f"Bandas de {label}", h=420, unit=f"precio por acción frente a {unit_name} × {label} histórico")
+    # leyenda debajo de las fechas, con su propio margen y casillas de ancho fijo: no pisa el eje ni el título
+    fig.update_layout(xaxis=dict(type="date"), hovermode="x unified", margin=dict(l=10, r=10, t=40, b=110),
+                      legend=dict(orientation="h", yanchor="top", y=-0.14, xanchor="left", x=0, font=dict(size=11),
+                                  bgcolor="rgba(255,255,255,0)", itemwidth=30, entrywidthmode="pixels", entrywidth=170))
     return fig
+
+
+def _explicacion(label: str, unit_name: str, pcts: dict, r_hoy, pr):
+    """Qué significa cada cosa del bloque de bandas, con los números de esta empresa."""
+    p10, p50, p90 = pcts.get(0.10), pcts.get(0.50), pcts.get(0.90)
+    hoy = ""
+    if r_hoy and pr is not None:
+        hoy = (f" Hoy cotiza a **{mult(r_hoy)}**, en el **percentil {pr * 100:.0f}**: el {pr * 100:.0f} % de los días de su historia estuvo "
+               f"más barata que ahora" + (" (barata frente a sí misma)." if pr < 0.25 else " (cara frente a sí misma)." if pr > 0.75 else " (zona normal)."))
+    with st.container(border=True):
+        st.markdown(
+            f"**Cómo se lee.** Cada día de la historia se calcula el {label} (precio ÷ {unit_name} del último ejercicio cerrado) y se ordenan "
+            f"todos esos días de más barato a más caro. Un **percentil** dice qué parte de los días estuvo por debajo de un nivel:  \n"
+            f"· **p10 = {mult(p10)}**: solo el 10 % de los días cotizó más barata. Es su zona de mínimos (pánico, malas noticias).  \n"
+            f"· **p25 / p75**: el 50 % central de los días estuvo entre los dos. Es su rango «normal».  \n"
+            f"· **Mediana (p50) = {mult(p50)}**: la mitad de los días cotizó por debajo y la otra mitad por encima. Es su múltiplo típico.  \n"
+            f"· **p90 = {mult(p90)}**: solo el 10 % de los días estuvo más cara. Es su zona de euforia.{hoy}  \n"
+            f"**La tabla** traduce cada percentil a precio por acción: el {label} de ese percentil × el {unit_name} de hoy. «Potencial a la "
+            f"mediana» = lo que subiría (o bajaría) si volviera a su múltiplo típico. **El gráfico** dibuja esas mismas bandas a lo largo del tiempo "
+            "(cada línea es el precio que habría tenido con ese múltiplo) y encima la cotización real: si va por la línea de abajo, el mercado la "
+            "pagaba barata; por la de arriba, cara. Ojo: compara la empresa consigo misma; si el negocio ha cambiado (crece menos, más deuda), su "
+            "múltiplo «normal» también.")
 
 
 def _ratio_block(ca, key: str, label: str, unit_name: str, bases: dict):
@@ -52,6 +78,7 @@ def _ratio_block(ca, key: str, label: str, unit_name: str, bases: dict):
                 help="Percentil: % de los días de la historia en que estuvo más barata que hoy. Bajo = barata frente a sí misma.")
     for i, p in enumerate((0.10, 0.25, 0.50, 0.75, 0.90)):
         c[i + 1].metric(f"Percentil {int(p * 100)}", mult(pcts[p]))
+    _explicacion(label, unit_name, pcts, r_hoy, pr)
     rows = []
     for name, b in bases.items():
         if not b or b <= 0:
