@@ -300,9 +300,18 @@ def history_stats(f: Financials) -> dict:
     s["g9"] = _cagr(rev.get(L), rev.get(ys[0]), N - 1) if N > 1 else None
     s["years_down"] = sum(1 for g in growth if g is not None and g < 0)
     s["gm_last"], s["gm5"], s["gm10"] = gm[-1], ratio_sum("gross_profit", "revenue", last5), ratio_sum("gross_profit", "revenue", ys)
-    s["gm_min"], s["gm_max"] = (min(gm_v) if gm_v else None), (max(gm_v) if gm_v else None)
+    # Mínimo y máximo «robustos»: con 5 años o más, el segundo peor y el segundo mejor. Un año excepcional (saneamientos,
+    # una venta extraordinaria) no decide los márgenes de los escenarios: Deckers 2017 (margen operativo −0,1 %) llevaba
+    # el Adverso y el Desastre a márgenes negativos.
+    def _lo(v):
+        return (sorted(v)[1] if len(v) >= 5 else min(v)) if v else None
+
+    def _hi(v):
+        return (sorted(v)[-2] if len(v) >= 5 else max(v)) if v else None
+
+    s["gm_min"], s["gm_max"] = _lo(gm_v), _hi(gm_v)
     s["om_last"], s["om5"], s["om10"] = om[-1], ratio_sum("operating_income", "revenue", last5), ratio_sum("operating_income", "revenue", ys)
-    s["om_min"], s["om_max"] = (min(om_v) if om_v else None), (max(om_v) if om_v else None)
+    s["om_min"], s["om_max"] = _lo(om_v), _hi(om_v)
     roes = [_div(f.get("net_income", y), f.get("equity", y)) for y in last5]
     roes = [x for x in roes if x is not None]
     s["roe5"] = sum(roes) / len(roes) if roes else None
@@ -358,10 +367,11 @@ STAT_LABELS = [
     ("g9", "Crecimiento anual de ventas, todo el periodo (g9)", "pct"),
     ("years_down", "Años con caída de ventas", "int"),
     ("gm_last", "Margen bruto del último año", "pct"), ("gm5", "Margen bruto medio 5 años", "pct"),
-    ("gm10", "Margen bruto medio del periodo", "pct"), ("gm_min", "Margen bruto mínimo", "pct"), ("gm_max", "Margen bruto máximo", "pct"),
+    ("gm10", "Margen bruto medio del periodo", "pct"), ("gm_min", "Margen bruto mínimo (segundo peor año)", "pct"),
+    ("gm_max", "Margen bruto máximo (segundo mejor año)", "pct"),
     ("om_last", "Margen operativo del último año", "pct"), ("om5", "Margen operativo medio 5 años", "pct"),
-    ("om10", "Margen operativo medio del periodo", "pct"), ("om_min", "Margen operativo mínimo", "pct"),
-    ("om_max", "Margen operativo máximo", "pct"),
+    ("om10", "Margen operativo medio del periodo", "pct"), ("om_min", "Margen operativo mínimo (segundo peor año)", "pct"),
+    ("om_max", "Margen operativo máximo (segundo mejor año)", "pct"),
     ("roe5", "ROE medio 5 años", "pct"), ("share_chg5", "Variación anual de acciones, 5 años (− = recompra neta)", "pct"),
     ("buyback_fcf5", "Recompras / flujo de caja libre, 5 años", "pct"), ("payout5", "Payout medio 5 años", "pct"),
     ("tax5", "Tipo impositivo medio 5 años", "pct"), ("nonop_sales5", "Resultado no operativo / ventas, 5 años", "pct"),
