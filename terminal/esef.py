@@ -63,19 +63,32 @@ def is_european(ticker: str) -> bool:
     return "." in t and t.rsplit(".", 1)[1] in YAHOO_SUFFIXES
 
 
-def _get(url: str, timeout: int = 90) -> requests.Response:
-    for i in range(3):
+def _espera(r: requests.Response | None, i: int) -> float:
+    """Segundos de espera antes de reintentar: respeta «Retry-After» si viene; si no, espera creciente."""
+    ra = (r.headers.get("Retry-After") if r is not None else None) or ""
+    if ra.strip().isdigit():
+        return min(float(ra), 180.0)
+    return min(5.0 * 2 ** i, 120.0)   # 5, 10, 20, 40, 80, 120…
+
+
+def _get(url: str, timeout: int = 90, intentos: int = 7) -> requests.Response:
+    """GET con reintentos. filings.xbrl.org limita las peticiones (429): se espera y se vuelve a probar."""
+    full = url if url.startswith("http") else BASE + url
+    r = None
+    for i in range(intentos):
         try:
-            r = requests.get(url if url.startswith("http") else BASE + url, headers=UA, timeout=timeout)
-            if r.status_code in (429, 502, 503, 504):
-                time.sleep(2 + 3 * i)
+            r = requests.get(full, headers=UA, timeout=timeout)
+            if r.status_code in (429, 502, 503, 504) and i < intentos - 1:
+                time.sleep(_espera(r, i))
                 continue
             r.raise_for_status()
             return r
+        except requests.HTTPError:
+            raise
         except requests.RequestException:
-            if i == 2:
+            if i == intentos - 1:
                 raise
-            time.sleep(2 + 3 * i)
+            time.sleep(_espera(None, i))
     r.raise_for_status()
     return r
 

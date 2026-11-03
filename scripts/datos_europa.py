@@ -63,6 +63,9 @@ def prev_json(name, default):
 
 
 # ---------------------------------------------------------------- 1. informes
+PAUSA = 1.5  # segundos entre páginas de la API
+
+
 def all_filings() -> dict[str, list[dict]]:
     by: dict[str, list[dict]] = {}
     url = f"{esef.BASE}/api/filings?page%5Bsize%5D=500&page%5Bnumber%5D=1"
@@ -81,6 +84,8 @@ def all_filings() -> dict[str, list[dict]]:
                 "report_url": a.get("report_url"), "errors": a.get("error_count") or 0})
             n += 1
         url = d.get("links", {}).get("next")
+        if url:
+            time.sleep(PAUSA)   # filings.xbrl.org limita las peticiones seguidas (429)
     log(f"Informes ESEF: {n:,} de {len(by):,} empresas")
     return by
 
@@ -98,6 +103,8 @@ def entity_names(leis: set[str], known: dict) -> dict[str, str]:
             if a.get("identifier") in leis:
                 out[a["identifier"]] = a.get("name") or a["identifier"]
         url = d.get("links", {}).get("next")
+        if url:
+            time.sleep(PAUSA)
     return out
 
 
