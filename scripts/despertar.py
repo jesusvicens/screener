@@ -44,10 +44,11 @@ def _despertar_si_duerme(pg) -> bool:
 def main() -> int:
     t0 = time.time()
     with sync_playwright() as p:
-        b = p.chromium.launch()
+        b = p.chromium.launch(args=["--disable-blink-features=AutomationControlled"])
         ctx = b.new_context(viewport={"width": 1400, "height": 900}, locale="es-ES",
                             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                                        "Chrome/131.0.0.0 Safari/537.36")
+        ctx.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
         pg = ctx.new_page()
         pg.goto(URL, wait_until="domcontentloaded", timeout=120_000)
         pg.wait_for_timeout(10_000)
@@ -57,7 +58,8 @@ def main() -> int:
             intento += 1
             # la app directamente: así Streamlit ejecuta el script como en una visita normal
             try:
-                pg.goto(APP, wait_until="domcontentloaded", timeout=120_000)
+                if intento > 1:
+                    pg.goto(URL, wait_until="domcontentloaded", timeout=120_000)
             except Exception as e:  # noqa: BLE001
                 print(f"[{intento}] no carga: {e}", flush=True)
             for _ in range(12):  # hasta 2 minutos por intento
