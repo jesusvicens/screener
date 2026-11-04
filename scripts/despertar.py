@@ -19,13 +19,18 @@ def main() -> int:
         pg = b.new_page()
         pg.goto(URL, wait_until="domcontentloaded", timeout=120_000)
         pg.wait_for_timeout(8_000)
-        boton = pg.get_by_role("button", name="Yes, get this app back up!")
-        if boton.count():
-            print("Dormida: la despierto.")
-            boton.first.click()
-            pg.wait_for_timeout(90_000)
+        for fr in pg.frames:  # el botón puede estar dentro de un iframe
+            try:
+                boton = fr.get_by_text("get this app back up", exact=False)
+                if boton.count():
+                    print("Dormida: la despierto.")
+                    boton.first.click()
+                    pg.wait_for_timeout(90_000)
+                    break
+            except Exception:  # noqa: BLE001
+                pass
         # espera a que cargue la app (pantalla de contraseña o Inicio)
-        for _ in range(24):
+        for i in range(36):
             txt = ""
             for fr in pg.frames:
                 try:
@@ -36,6 +41,8 @@ def main() -> int:
                 print("Despierta.")
                 b.close()
                 return 0
+            if i % 6 == 0:
+                print(f"[{i}] {len(pg.frames)} marcos · texto: {txt[:200]!r}")
             pg.wait_for_timeout(5_000)
         print("No he podido confirmar que esté despierta.")
         b.close()
