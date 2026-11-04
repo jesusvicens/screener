@@ -103,8 +103,9 @@ def in_list(d: dict, grupo: str) -> list[str]:
 # ---------------------------------------------------------------- prioridad
 PESO_NOTA = 0.7
 PESO_PRECIO = 0.3
-# Con nota cualitativa (análisis de Claude o tuyo): 40 % financiera + 30 % cualitativa + 30 % precio.
-PESO_NOTA_Q, PESO_CUAL_Q = 0.4, 0.3
+# Con nota cualitativa (análisis de Claude o tuyo): 45 % cualitativa + 40 % financiera + 15 % precio. Lo que manda es
+# la calidad del negocio; el precio solo desempata entre empresas parecidas (el margen de seguridad se mira después).
+PESO_NOTA_Q, PESO_CUAL_Q, PESO_PRECIO_Q = 0.40, 0.45, 0.15
 
 
 def prioridad(df: pd.DataFrame) -> pd.Series:
@@ -134,7 +135,7 @@ def prioridad_detalle(df: pd.DataFrame) -> pd.DataFrame:
     else:
         out["Puntos por nota"] = (PESO_NOTA * nota).round(2)
         out["Puntos por cualitativo"] = 0.0
-    out["Puntos por precio"] = (PESO_PRECIO * barata).round(2)
+    out["Puntos por precio"] = ((PESO_PRECIO_Q if cual is not None else PESO_PRECIO) * barata).round(2)
     out["Prioridad"] = (out["Puntos por nota"] + out["Puntos por cualitativo"] + out["Puntos por precio"]).round(2)
     out["Precio (0-10)"] = barata.round(1)
     motivos = []

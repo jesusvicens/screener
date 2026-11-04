@@ -96,7 +96,7 @@ def body():
 # ------------------------------------------------------------------ recomendaciones (en el Screener)
 def recomendaciones():
     """Todas las empresas con el examen cualitativo contestado (test de Claude o tu análisis), ordenadas por prioridad:
-    40 % nota financiera + 30 % nota cualitativa + 30 % precio."""
+    45 % nota cualitativa + 40 % nota financiera + 15 % precio."""
     from terminal import candidatas, exam as E
     explica("recomendaciones")
     d = _listas()
