@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 
+import numpy as np
 import pandas as pd
 
 from . import storage
@@ -115,14 +116,46 @@ def prioridad(df: pd.DataFrame) -> pd.Series:
 BLOQUES = {"Nota PyG": "PyG", "Nota Balance": "Balance", "Nota Cash Flow": "Cash Flow", "Nota Asignación de capital": "Asignación de capital"}
 
 
+def _crec_robusto(serie, n: int = 5) -> float:
+    """Crecimiento anual a n años entre medias de dos años (años L-n-1/L-n frente a L-1/L).
+
+    Así un año extraordinario en el punto de partida (p. ej. el beneficio fiscal de Adobe en 2020) o en el final no
+    infla ni hunde el crecimiento. Sin los n+2 años, o con alguna de las medias negativa, devuelve NaN: una empresa
+    con poca historia no puntúa como si creciera mucho (cuenta 5, neutro)."""
+    try:
+        a = np.asarray(serie, dtype=float)
+    except Exception:  # noqa: BLE001
+        return float("nan")
+    if a.ndim != 1 or len(a) < n + 2:
+        return float("nan")
+    ini, fin = a[-(n + 2):-n], a[-2:]
+    if not (np.isfinite(ini).all() and np.isfinite(fin).all()):
+        return float("nan")
+    i, f = ini.mean(), fin.mean()
+    if i <= 0 or f <= 0:
+        return float("nan")
+    tramo = a[-(n + 2):]
+    if (tramo <= 0).any():
+        pass  # un año con pérdidas dentro del tramo es posible; las medias ya lo recogen
+    else:
+        saltos = tramo[1:] / tramo[:-1]
+        if (saltos > 20).any() or (saltos < 0.05).any():
+            return float("nan")  # salto de escala en los datos (unidades frente a millones, cambio de etiqueta)
+    return float((f / i) ** (1 / n) - 1)
+
+
 def calidad_que_crece(df: pd.DataFrame) -> pd.Series:
     """0-10 «al estilo Fisher» dentro del grupo: cuánto crece y con qué márgenes y regularidad.
 
-    45 % crecimiento (CAGR de ventas y de BPA a 5 años, con tope del 40 %), 40 % rentabilidad (margen operativo,
-    margen de caja libre y ROIC o, si falta, ROE medio) y 15 % regularidad (años con caída de ventas y de BPA).
-    Cada dato se puntúa por su posición (percentil) entre las candidatas; sin dato cuenta 5. Materias primas,
-    navieras y constructoras de viviendas puntúan un 30 % menos: sus márgenes y su crecimiento salen de un ciclo
-    favorable, no de una ventaja duradera.
+    45 % crecimiento, 40 % rentabilidad (margen operativo, margen de caja libre y ROIC o, si falta, ROE medio) y
+    15 % regularidad (años con caída de ventas y de BPA). Cada dato se puntúa por su posición (percentil) entre las
+    candidatas; sin dato cuenta 5.
+
+    Crecimiento: ventas, beneficio neto y caja libre a 5 años, medidos entre medias de dos años (ver `_crec_robusto`), con tope
+    del 40 %. Solo cuenta entero si la rentabilidad está al menos en la media del grupo: crecer mucho con márgenes
+    flojos vale menos (con la rentabilidad más baja, la mitad). Materias primas, navieras, constructoras de viviendas e
+    inmobiliarias puntúan un 30 % menos: sus márgenes y su crecimiento salen de un ciclo favorable o de revalorizaciones,
+    no de una ventaja duradera.
     """
     def num(c):
         return pd.to_numeric(df[c], errors="coerce") if c in df else pd.Series(float("nan"), index=df.index)
@@ -131,10 +164,27 @@ def calidad_que_crece(df: pd.DataFrame) -> pd.Series:
         r = s.rank(pct=True, ascending=alto_mejor)
         return (r * 10).fillna(5.0)
 
-    crec = (pct(num("CAGR ventas 5a").clip(upper=0.4)) + pct(num("CAGR BPA 5a").clip(upper=0.4))) / 2
+    def robusto(col_serie, col_cagr):
+        """Con la serie anual, el crecimiento robusto; si la empresa no tiene serie (algunas europeas), el CAGR."""
+        if col_serie not in df:
+            return num(col_cagr)
+        def sin_serie(x):
+            try:
+                return not np.isfinite(np.asarray(x, dtype=float)).any()
+            except Exception:  # noqa: BLE001
+                return True
+        g = df[col_serie].map(_crec_robusto)
+        return g.where(~df[col_serie].map(sin_serie), num(col_cagr))
+
+    # Beneficio neto y no BPA: la serie de BPA no está ajustada por splits (Alphabet 20:1 en 2022) y saldría negativa.
+    g_rev = robusto("_s_rev", "CAGR ventas 5a")
+    g_ben = robusto("_s_ni", "CAGR beneficio 5a")
+    g_fcf = robusto("_s_fcf", "CAGR FCF 5a")
+    crec = (pct(g_rev.clip(upper=0.4)) + pct(g_ben.clip(upper=0.4)) + pct(g_fcf.clip(upper=0.4))) / 3
     rent_cap = num("ROIC").where(num("ROIC").between(-1, 1.5)).fillna(num("ROE medio 5a"))
     rent = (pct(num("Margen operativo").where(num("Margen operativo") <= 0.8)) + pct(num("Margen FCF").where(num("Margen FCF") <= 0.8))
             + pct(rent_cap)) / 3
+    crec = crec * (0.5 + rent / 10).clip(upper=1.0)
     reg = (pct(num("Años caída ventas"), alto_mejor=False) + pct(num("Años caída BPA"), alto_mejor=False)) / 2
     score = 0.45 * crec + 0.40 * rent + 0.15 * reg
     ciclica = es_ciclica(df)
@@ -143,7 +193,7 @@ def calidad_que_crece(df: pd.DataFrame) -> pd.Series:
 
 CICLICAS = ("oil", "gas", "petroleum", "marine", "shipping", "mining", "gold", "silver", "steel", "metal", "coal",
             "uranium", "fertilizer", "agricultural chemicals", "homebuilding", "residential construction", "copper",
-            "aluminum", "paper", "lumber", "tanker")
+            "aluminum", "paper", "lumber", "tanker", "real estate", "reit")
 
 
 def es_ciclica(df: pd.DataFrame) -> pd.Series:

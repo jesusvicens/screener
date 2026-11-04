@@ -174,7 +174,7 @@ Para cada año calcula el **PER de salida requerido** para ganar r. Si es menor 
 
 - **Origen:** «Claude · test rápido» lo hace una tarea diaria, que puntúa 50 candidatas al día en orden de prioridad, con el motivo de cada respuesta y unas pocas fuentes por empresa. «Tu análisis» son las que has contestado tú, y mandan sobre el test de Claude.
 - **Prioridad** (0-10) = 45 % nota cualitativa + 40 % parte financiera + 15 % precio (rentabilidad por caja libre frente al resto; solo desempata).
-- **Parte financiera** = 40 % tu nota financiera + 60 % **calidad que crece**: crecimiento de ventas y BPA a 5 años (45 %), márgenes operativo y de caja libre y ROIC (40 %) y regularidad (15 %), cada uno frente al resto de candidatas. Materias primas, navieras y constructoras de viviendas puntúan un 30 % menos (sus márgenes salen del ciclo).
+- **Parte financiera** = 40 % tu nota financiera + 60 % **calidad que crece**: crecimiento de ventas, beneficio y caja libre a 5 años (45 %), márgenes operativo y de caja libre y ROIC (40 %) y regularidad (15 %), cada uno frente al resto de candidatas. El crecimiento se mide entre medias de dos años, para que un año extraordinario al principio o al final no lo distorsione, y solo cuenta entero si la rentabilidad está al menos en la media (con la más baja, la mitad). Las empresas con poca historia puntúan neutro en crecimiento. Materias primas, navieras, constructoras de viviendas e inmobiliarias puntúan un 30 % menos (sus márgenes salen del ciclo o de revalorizaciones).
 - **Valor estimado y margen de seguridad:** la proyección estándar por ventas, la misma del screener.
 - Abajo puedes leer las 20 respuestas de cualquier empresa con su motivo y añadir a tus listas las que te interesen.
 
