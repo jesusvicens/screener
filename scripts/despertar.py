@@ -15,8 +15,11 @@ URL = "https://jesusvicens-screener-app-kc0xfh.streamlit.app/"
 
 def main() -> int:
     with sync_playwright() as p:
-        b = p.chromium.launch()
-        pg = b.new_page()
+        b = p.chromium.launch(args=["--disable-blink-features=AutomationControlled"])
+        ctx = b.new_context(viewport={"width": 1400, "height": 900}, locale="es-ES",
+                            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                                       "Chrome/131.0.0.0 Safari/537.36")
+        pg = ctx.new_page()
         pg.goto(URL, wait_until="domcontentloaded", timeout=120_000)
         pg.wait_for_timeout(8_000)
         for fr in pg.frames:  # el botón puede estar dentro de un iframe
@@ -42,7 +45,8 @@ def main() -> int:
                 b.close()
                 return 0
             if i % 6 == 0:
-                print(f"[{i}] {len(pg.frames)} marcos · texto: {txt[:200]!r}")
+                print(f"[{i}] marcos: {[f.url[:80] for f in pg.frames]} · texto: {txt[-200:]!r}")
+                pg.screenshot(path=f"despertar_{i}.png")
             pg.wait_for_timeout(5_000)
         print("No he podido confirmar que esté despierta.")
         b.close()

@@ -17,3 +17,9 @@ jobs:
           python-version: "3.12"
       - run: pip install playwright && python -m playwright install --with-deps chromium
       - run: python scripts/despertar.py
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas
+          path: despertar_*.png
+          if-no-files-found: ignore
