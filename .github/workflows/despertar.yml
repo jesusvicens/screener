@@ -1,0 +1,19 @@
+name: Mantener despierta la terminal
+
+# Streamlit Community Cloud duerme las apps sin visitas. Cada 5 horas una visita con navegador la mantiene encendida.
+on:
+  schedule:
+    - cron: "23 */5 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  despertar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install playwright && python -m playwright install --with-deps chromium
+      - run: python scripts/despertar.py
