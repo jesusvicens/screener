@@ -96,7 +96,7 @@ def body():
 # ------------------------------------------------------------------ recomendaciones (en el Screener)
 def recomendaciones():
     """Todas las empresas con el examen cualitativo contestado (test de Claude o tu análisis), ordenadas por prioridad:
-    45 % nota cualitativa + 40 % nota financiera + 15 % precio."""
+    45 % nota cualitativa + 40 % parte financiera (40 % tu nota financiera + 60 % «calidad que crece») + 15 % precio."""
     from terminal import candidatas, exam as E
     explica("recomendaciones")
     d = _listas()
@@ -138,7 +138,7 @@ def recomendaciones():
     nmin = c[1].number_input("Nota financiera mínima", 0.0, 10.0, 0.0, 0.5)
     sectors = c[2].multiselect("Sector", sorted(s for s in cand["Sector"].dropna().unique() if s != "—"), placeholder="Todos")
     origen = c[3].multiselect("Origen", sorted(cand["Origen"].dropna().unique()), placeholder="Todos")
-    orden = c[4].selectbox("Ordenar por", ["Prioridad", "Nota cualitativa", "Nota financiera", "Margen de seguridad", "Rent. FCF"])
+    orden = c[4].selectbox("Ordenar por", ["Prioridad", "Calidad que crece", "Nota cualitativa", "Nota financiera", "Margen de seguridad", "Rent. FCF"])
     e = st.columns([1, 1, 2])
     excl_listas = e[0].toggle("Ocultar las de mis listas", False)
     solo_mos = e[1].toggle("Solo con margen de seguridad positivo", False)
@@ -166,14 +166,14 @@ def recomendaciones():
                "de Claude se basa en unas pocas fuentes por empresa: es un filtro para decidir qué mirar, no un análisis completo.")
     from terminal import descripciones
     cand["Negocio"] = [info[t].get("_frase") or descripciones.para(t, gu) for t in cand["Ticker"]]
-    cols = ["Empresa", "Negocio", "Prioridad", "Nota cualitativa", "Nota financiera", "Veredicto", "Margen de seguridad", "Valor estimado",
+    cols = ["Empresa", "Negocio", "Prioridad", "Nota cualitativa", "Nota financiera", "Calidad que crece", "Veredicto", "Margen de seguridad", "Valor estimado",
             "Precio", "Alertas", "Origen", "Fecha del test", "Puntos por nota", "Puntos por cualitativo", "Puntos por precio"] \
         + [f"Cual. {b}" for b in E.QUALITATIVE_BLOCKS] + ["Sector", "Capitalización (M$)", "PER", "Rent. FCF", "CAGR ventas 5a", "Margen operativo",
                                                           "ROIC incremental"]
     out = cand[["Ticker"] + [x for x in cols if x in cand]].set_index("Ticker")
     out["Empresa"] = [company_url(t, n) for t, n in zip(out.index, out["Empresa"])]
     kinds = {k: v for k, v in screener.METRIC_KIND.items()}
-    kinds.update({"Prioridad": "ps", "Puntos por nota": "ps", "Puntos por cualitativo": "ps", "Puntos por precio": "ps", "Nota cualitativa": "ps",
+    kinds.update({"Prioridad": "ps", "Calidad que crece": "ps", "Puntos por nota": "ps", "Puntos por cualitativo": "ps", "Puntos por precio": "ps", "Nota cualitativa": "ps",
                   "Valor estimado": "ps", **{f"Cual. {b}": "ps" for b in E.QUALITATIVE_BLOCKS}})
     ah = st.columns([3, 1.2])
     with ah[1]:

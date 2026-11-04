@@ -173,7 +173,8 @@ Para cada año calcula el **PER de salida requerido** para ganar r. Si es menor 
 **Para qué sirve:** ver todas las empresas que tienen contestado el examen cualitativo (20 preguntas: negocio, producto, dirección, estrategia, cultura y sector), ordenadas para decidir cuáles mirar primero.
 
 - **Origen:** «Claude · test rápido» lo hace una tarea diaria, que puntúa 50 candidatas al día en orden de prioridad, con el motivo de cada respuesta y unas pocas fuentes por empresa. «Tu análisis» son las que has contestado tú, y mandan sobre el test de Claude.
-- **Prioridad** (0-10) = 45 % nota cualitativa + 40 % nota financiera + 15 % precio (rentabilidad por caja libre frente al resto de la tabla; solo desempata).
+- **Prioridad** (0-10) = 45 % nota cualitativa + 40 % parte financiera + 15 % precio (rentabilidad por caja libre frente al resto; solo desempata).
+- **Parte financiera** = 40 % tu nota financiera + 60 % **calidad que crece**: crecimiento de ventas y BPA a 5 años (45 %), márgenes operativo y de caja libre y ROIC (40 %) y regularidad (15 %), cada uno frente al resto de candidatas. Materias primas, navieras y constructoras de viviendas puntúan un 30 % menos (sus márgenes salen del ciclo).
 - **Valor estimado y margen de seguridad:** la proyección estándar por ventas, la misma del screener.
 - Abajo puedes leer las 20 respuestas de cualquier empresa con su motivo y añadir a tus listas las que te interesen.
 

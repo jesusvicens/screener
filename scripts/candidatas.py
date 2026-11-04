@@ -1,7 +1,7 @@
 """Herramientas de la tarea diaria de análisis cualitativos (la ejecuta Claude, no la app).
 
   python scripts/candidatas.py cola --datos ../terminal-datos --n 50
-      → las siguientes N empresas a puntuar (JSON), en orden de prioridad (40 % nota financiera + 30 % precio; la cualitativa,
+      → las siguientes N empresas a puntuar (JSON), en orden de prioridad (85 % parte financiera —nota financiera y «calidad que crece»— + 15 % precio; la cualitativa,
         que aún no tienen, cuenta igual para todas) entre las de nota financiera ≥ 7,5, como mucho 3 preguntas «no aplica» y
         ventas ≥ 300 M$ (EE. UU. y Europa). Fuera: las descartadas, las que ya tienen tu examen cualitativo y las puntuadas
         por Claude en los últimos 180 días (después se repasan, las más antiguas primero).

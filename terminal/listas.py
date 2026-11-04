@@ -101,8 +101,8 @@ def in_list(d: dict, grupo: str) -> list[str]:
 
 
 # ---------------------------------------------------------------- prioridad
-PESO_NOTA = 0.7
-PESO_PRECIO = 0.3
+PESO_NOTA = 0.85
+PESO_PRECIO = 0.15
 # Con nota cualitativa (análisis de Claude o tuyo): 45 % cualitativa + 40 % financiera + 15 % precio. Lo que manda es
 # la calidad del negocio; el precio solo desempata entre empresas parecidas (el margen de seguridad se mira después).
 PESO_NOTA_Q, PESO_CUAL_Q, PESO_PRECIO_Q = 0.40, 0.45, 0.15
@@ -115,9 +115,53 @@ def prioridad(df: pd.DataFrame) -> pd.Series:
 BLOQUES = {"Nota PyG": "PyG", "Nota Balance": "Balance", "Nota Cash Flow": "Cash Flow", "Nota Asignación de capital": "Asignación de capital"}
 
 
+def calidad_que_crece(df: pd.DataFrame) -> pd.Series:
+    """0-10 «al estilo Fisher» dentro del grupo: cuánto crece y con qué márgenes y regularidad.
+
+    45 % crecimiento (CAGR de ventas y de BPA a 5 años, con tope del 40 %), 40 % rentabilidad (margen operativo,
+    margen de caja libre y ROIC o, si falta, ROE medio) y 15 % regularidad (años con caída de ventas y de BPA).
+    Cada dato se puntúa por su posición (percentil) entre las candidatas; sin dato cuenta 5. Materias primas,
+    navieras y constructoras de viviendas puntúan un 30 % menos: sus márgenes y su crecimiento salen de un ciclo
+    favorable, no de una ventaja duradera.
+    """
+    def num(c):
+        return pd.to_numeric(df[c], errors="coerce") if c in df else pd.Series(float("nan"), index=df.index)
+
+    def pct(s, alto_mejor=True):
+        r = s.rank(pct=True, ascending=alto_mejor)
+        return (r * 10).fillna(5.0)
+
+    crec = (pct(num("CAGR ventas 5a").clip(upper=0.4)) + pct(num("CAGR BPA 5a").clip(upper=0.4))) / 2
+    rent_cap = num("ROIC").where(num("ROIC").between(-1, 1.5)).fillna(num("ROE medio 5a"))
+    rent = (pct(num("Margen operativo").where(num("Margen operativo") <= 0.8)) + pct(num("Margen FCF").where(num("Margen FCF") <= 0.8))
+            + pct(rent_cap)) / 3
+    reg = (pct(num("Años caída ventas"), alto_mejor=False) + pct(num("Años caída BPA"), alto_mejor=False)) / 2
+    score = 0.45 * crec + 0.40 * rent + 0.15 * reg
+    ciclica = es_ciclica(df)
+    return score.where(~ciclica, score * 0.7).round(2)
+
+
+CICLICAS = ("oil", "gas", "petroleum", "marine", "shipping", "mining", "gold", "silver", "steel", "metal", "coal",
+            "uranium", "fertilizer", "agricultural chemicals", "homebuilding", "residential construction", "copper",
+            "aluminum", "paper", "lumber", "tanker")
+
+
+def es_ciclica(df: pd.DataFrame) -> pd.Series:
+    ind = df.get("Industria", pd.Series("", index=df.index)).astype(str).str.lower()
+    sec = df.get("Sector", pd.Series("", index=df.index)).astype(str).str.lower()
+    m = ind.apply(lambda x: any(k in x for k in CICLICAS))
+    return m | sec.isin(["energy", "basic materials"])
+
+
 def prioridad_detalle(df: pd.DataFrame) -> pd.DataFrame:
-    """Prioridad y sus piezas: puntos por nota, puntos por precio y el motivo en palabras."""
-    nota = pd.to_numeric(df["Nota financiera"], errors="coerce")
+    """Prioridad y sus piezas: puntos por nota, puntos por precio y el motivo en palabras.
+
+    La parte «financiera» es la media de tu nota financiera (examen de 21 preguntas) y de la «calidad que crece»
+    (crecimiento, márgenes y regularidad frente al resto de candidatas): así una empresa que crece mucho con márgenes
+    enormes pasa por delante de otra igual de sana pero que apenas crece."""
+    nota_ex = pd.to_numeric(df["Nota financiera"], errors="coerce")
+    fisher = calidad_que_crece(df)
+    nota = (0.4 * nota_ex + 0.6 * fisher).where(nota_ex.notna(), fisher)
     rfcf = pd.to_numeric(df.get("Rent. FCF"), errors="coerce") if "Rent. FCF" in df else pd.Series(index=df.index, dtype=float)
     per = pd.to_numeric(df.get("PER"), errors="coerce") if "PER" in df else pd.Series(index=df.index, dtype=float)
     fiable = ~((rfcf > 0.30) | ((per > 0) & (per < 3))) & rfcf.notna()
@@ -138,6 +182,7 @@ def prioridad_detalle(df: pd.DataFrame) -> pd.DataFrame:
     out["Puntos por precio"] = ((PESO_PRECIO_Q if cual is not None else PESO_PRECIO) * barata).round(2)
     out["Prioridad"] = (out["Puntos por nota"] + out["Puntos por cualitativo"] + out["Puntos por precio"]).round(2)
     out["Precio (0-10)"] = barata.round(1)
+    out["Calidad que crece"] = fisher
     motivos = []
     for i in df.index:
         partes = []
